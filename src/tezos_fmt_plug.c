@@ -64,9 +64,9 @@ john_register_one(&fmt_tezos);
 #define MIN_KEYS_PER_CRYPT      1
 #define MAX_KEYS_PER_CRYPT      4
 #endif
-#if !defined(PLAINTEXT_LENGTH) || PLAINTEXT_LENGTH > 125
+#if !defined(PLAINTEXT_LENGTH) || PLAINTEXT_LENGTH > MAX_PLAINTEXT_LENGTH
 #undef PLAINTEXT_LENGTH
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #endif
 
 static char (*saved_key)[PLAINTEXT_LENGTH + 1];
@@ -174,7 +174,7 @@ static int crypt_all(int *pcount, struct db_salt *salt)
 			// asymmetric stuff
 			ed25519_publickey(seed[i].sk, pk);
 
-			blake2b((uint8_t *)buffer, (unsigned char*)pk, NULL, 20, 32, 0); // pk is pkh (pubkey hash)
+			blake2b((uint8_t *)buffer, 20, (unsigned char*)pk, 32, NULL, 0); // pk is pkh (pubkey hash)
 
 			if (!memcmp(cur_salt->raw_address + 2, buffer, 20)) {
 				cracked[index+i] = 1;

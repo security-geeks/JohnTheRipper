@@ -12,6 +12,9 @@
 #ifdef HAVE_OPENCL
 
 #include "opencl_common.h"
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 /* Allow the developer to select configurable step size for gws. */
 int autotune_get_next_gws_size(size_t num, int step, int startup,
@@ -51,7 +54,7 @@ size_t autotune_get_task_max_work_group_size(int use_local_memory,
                                            cl_kernel crypt_kernel)
 {
 
-	size_t max_available;
+	size_t max_available, compute_units;
 
 	if (use_local_memory)
 		max_available = get_local_memory_size(gpu_id) /
@@ -59,27 +62,29 @@ size_t autotune_get_task_max_work_group_size(int use_local_memory,
 	else
 		max_available = get_device_max_lws(gpu_id);
 
+	/* Still allows the end user to specify a value for 'LWS=' (high or not)
+	   using the command line or a configuration file; so the local_work_size
+	   variable is (can be) initialized by the end user. */
+	if (cpu(device_info[gpu_id]) && !get_lws_set_by_user()) {
+		compute_units = get_max_compute_units(gpu_id);
+
+		if (compute_units <= 1)
+#ifdef _OPENMP
+			compute_units = omp_get_max_threads();
+#else
+			compute_units = 32;
+#endif
+		get_power_of_two(compute_units);
+
+		/* If we can restrict max_available we should do so */
+		if (max_available > (compute_units * 4))
+			max_available = compute_units * 4;
+	}
+
 	if (max_available > get_kernel_max_lws(gpu_id, crypt_kernel))
 		return get_kernel_max_lws(gpu_id, crypt_kernel);
 
 	return max_available;
-}
-
-/* Can be used to select a 'good' default gws size */
-size_t autotune_get_task_max_size(int multiplier, int keys_per_core_cpu,
-                                int keys_per_core_gpu, cl_kernel crypt_kernel)
-{
-	size_t max_available;
-
-	max_available = get_max_compute_units(gpu_id);
-
-	if (cpu(device_info[gpu_id]))
-		return max_available * keys_per_core_cpu;
-	else if (gpu_intel(device_info[gpu_id]))
-		return 0;
-	else
-		return max_available * multiplier * keys_per_core_gpu *
-			get_kernel_max_lws(gpu_id, crypt_kernel);
 }
 
 /* --

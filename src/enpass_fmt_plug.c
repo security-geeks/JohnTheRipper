@@ -43,15 +43,15 @@ john_register_one(&fmt_enpass);
 #define ALGORITHM_NAME       "PBKDF2-SHA1/SHA512 " SHA512_ALGORITHM_NAME
 #else
 #if ARCH_BITS >= 64
-#define ALGORITHM_NAME       "PBKDF2-SHA1/SHA512 64/64"
+#define ALGORITHM_NAME       "PBKDF2-SHA1/SHA512 64/" ARCH_BITS_STR
 #else
-#define ALGORITHM_NAME       "PBKDF2-SHA1/SHA512 32/64"
+#define ALGORITHM_NAME       "PBKDF2-SHA1/SHA512 " ARCH_BITS_STR "/" ARCH_BITS_STR
 #endif
 #endif
 #define BENCHMARK_COMMENT    ""
 #define BENCHMARK_LENGTH     0x507
 #define BINARY_SIZE          0
-#define PLAINTEXT_LENGTH     125
+#define PLAINTEXT_LENGTH     MAX_PLAINTEXT_LENGTH
 #define SALT_SIZE            sizeof(struct custom_salt)
 #define BINARY_ALIGN         1
 #define SALT_ALIGN           sizeof(unsigned int)
@@ -152,7 +152,7 @@ static int crypt_all(int *pcount, struct db_salt *salt)
 #endif
 	for (index = 0; index < count; index += batch_size) {
 		unsigned char master[MAX_KEYS_PER_CRYPT][32];
-		unsigned char output[24];
+		unsigned char output[32];
 		unsigned char *iv_in;
 		unsigned char iv_out[16];
 		int size, i;

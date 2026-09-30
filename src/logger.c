@@ -58,6 +58,8 @@
 #include "cracker.h"
 #include "signals.h"
 #include "logger.h"
+#include "timer.h"
+#include "color.h"
 
 static int cfg_beep;
 static int cfg_log_passwords;
@@ -110,8 +112,7 @@ struct log_file {
 static struct log_file log = {NULL, NULL, NULL, 0, -1};
 static struct log_file pot = {NULL, NULL, NULL, 0, -1};
 
-static char *admin_start, *admin_end, *admin_string, *terminal_reset;
-static char *other_start, *other_end;
+static char *admin_start, *other_start, *admin_string, *terminal_reset;
 static int in_logger, show_admins;
 
 #if !(__MINGW32__ || _MSC_VER)
@@ -136,24 +137,36 @@ int log_lock(int fd, int cmd, int type, const char *name,
 	        : cmd == F_UNLCK ? "F_UNLCK" : "");
 #endif
 
+	uint64_t lock_start = 0;
+	int warned = 0;
+	int retries = 0;
+
 	lock.l_type = type;
 	while (fcntl(fd, cmd, &lock)) {
-		if (errno == EAGAIN) {
-			static int warned;
+		if (errno == EAGAIN || errno == ENOLCK) {
+			unsigned int warn_bit = (errno == EAGAIN ? 1 : 2);
 			struct timeval t;
 
 			if (cmd == F_SETLK)
 				return -1;
 
-			if (!warned++) {
-				log_event("Got EAGAIN despite F_SETLKW (only logged once per node) %s:%d %s", source_file, line, function);
-				fprintf(stderr, "Node %d: File locking apparently exhausted, check ulimits and any NFS server limits. This is recoverable but will harm performance (muting further of these messages from same node)\n", NODE);
-				srand(NODE);
+			if (!(warned & warn_bit)) {
+				if (!lock_start)
+					lock_start = john_get_nano();
+
+				log_event("- Got %s despite F_SETLKW trying to lock %s", errno == EAGAIN ? "EAGAIN" : "ENOLCK", name);
+				if (options.node_count)
+					fprintf(stderr, "%u: ", NODE);
+				fprintf(stderr, "File locking apparently exhausted (\"%s\" trying to lock %s). Check ulimits and any NFS server limits. Retrying...\n", strerror(errno), name);
+
+				warned |= warn_bit; /* Do not print again while retrying */
 			}
 
 			/* Sleep for a random time of max. ~260 ms */
 			t.tv_sec = 0; t.tv_usec = (rand() & 1023) << 8;
 			select(0, NULL, NULL, NULL, &t);
+
+			retries++;
 			continue;
 		} else if (errno != EINTR)
 			pexit("%s:%d %s() fcntl(%s, %s, %s)",
@@ -162,6 +175,15 @@ int log_lock(int fd, int cmd, int type, const char *name,
 			      : type == F_UNLCK ? "F_UNLCK" : "",
 			      cmd == F_SETLKW ? "F_SETLKW" : cmd == F_SETLK ? "F_SETLK"
 			      : cmd == F_UNLCK ? "F_UNLCK" : "");
+	}
+
+	if (retries) {
+		char *delay_str = human_prefix_small((john_get_nano() - lock_start) / 1E9);
+
+		log_event("+ Got a lock after %d retr%s, %ss", retries, retries > 1 ? "ies" : "y", delay_str);
+		if (options.node_count)
+			fprintf(stderr, "%u: ", NODE);
+		fprintf(stderr, "Got a lock after %d retr%s, %ss\n", retries, retries > 1 ? "ies" : "y", delay_str);
 	}
 
 #ifdef LOCK_DEBUG
@@ -352,46 +374,21 @@ static int log_time(void)
 	return count1 + count2;
 }
 
-/*
- * Change of "^" in passed string to ANSI Escape.
- * If input is a NULL pointer or feature is disabled, return a null string.
- */
-static char *parse_esc(const char *string)
-{
-	char *out = str_alloc_copy(string);
-	char *s = out;
-
-	if (!show_admins || !s)
-		return "";
-
-	while (*s) {
-		if (*s == '^')
-			*s = 0x1b;
-		s++;
-	}
-
-	return out;
-}
-
 void log_init(char *log_name, char *pot_name, char *session)
 {
 	in_logger = 1;
 
 	show_admins = cfg_get_bool(SECTION_OPTIONS, NULL, "MarkAdminCracks", 0);
 
-	if (isatty(fileno(stdout))) {
+	if (show_admins && isatty(fileno(stdout))) {
 		admin_start = parse_esc(cfg_get_param(SECTION_OPTIONS, NULL,
-		                                      "MarkAdminStart"));
-		admin_end = parse_esc(cfg_get_param(SECTION_OPTIONS, NULL,
-		                                    "MarkAdminEnd"));
+		                                      "ColorAdmin"));
 		other_start = parse_esc(cfg_get_param(SECTION_OPTIONS, NULL,
-		                                      "MarkOtherStart"));
-		other_end = parse_esc(cfg_get_param(SECTION_OPTIONS, NULL,
-		                                    "MarkOtherEnd"));
+		                                      "ColorCrack"));
 		terminal_reset = parse_esc(cfg_get_param(SECTION_OPTIONS, NULL,
 		                                         "TerminalReset"));
 	} else
-		admin_start = admin_end = other_start = other_end = terminal_reset = "";
+		admin_start = other_start = terminal_reset = "";
 
 	admin_string = parse_esc(cfg_get_param(SECTION_OPTIONS, NULL,
 	                                       "MarkAdminString"));
@@ -518,7 +515,7 @@ static int is_admin(char *login, char *uid)
 }
 
 #define ADM_START admin ? admin_start : other_start
-#define ADM_END   admin ? admin_end : other_end
+#define ADM_END   color_end
 
 void log_guess(char *login, char *uid, char *ciphertext, char *rep_plain,
                char *store_plain, char field_sep, int index)

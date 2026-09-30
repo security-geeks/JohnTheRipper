@@ -20,7 +20,7 @@
 #define SQRT_2			0x5a827999
 #define SQRT_3			0x6ed9eba1
 
-inline void md4_crypt_a(uint *hash, uint *nt_buffer)
+INLINE void md4_crypt_a(uint *hash, uint *nt_buffer)
 {
 	unsigned int a = INIT_A;
 	unsigned int b = INIT_B;
@@ -146,7 +146,7 @@ inline void md4_crypt_a(uint *hash, uint *nt_buffer)
 	hash[3] = d + INIT_D;
 }
 
-inline void md4_crypt_b(uint *hash, constant uint *salt)
+INLINE void md4_crypt_b(uint *hash, constant uint *salt)
 {
 	unsigned int a = INIT_A;
 	unsigned int b = INIT_B;
@@ -281,7 +281,7 @@ inline void md4_crypt_b(uint *hash, constant uint *salt)
 
 #if UTF_8
 
-inline void prepare_key(__global uint *key, uint length,
+INLINE void prepare_key(__global uint *key, uint length,
                         MAYBE_VOLATILE uint *nt_buffer)
 {
 	const __global UTF8 *source = (const __global uchar*)key;
@@ -351,7 +351,7 @@ inline void prepare_key(__global uint *key, uint length,
 
 #else
 
-inline void prepare_key(__global uint *key, uint length, uint *nt_buffer)
+INLINE void prepare_key(__global uint *key, uint length, uint *nt_buffer)
 {
 	uint i, nt_index, keychars;
 
@@ -369,7 +369,7 @@ inline void prepare_key(__global uint *key, uint length, uint *nt_buffer)
 
 #endif /* UTF_8 */
 
-inline void cmp_final(uint gid,
+INLINE void cmp_final(uint gid,
 		uint iter,
 		uint *hash,
 		__global uint *offset_table,
@@ -416,7 +416,7 @@ inline void cmp_final(uint gid,
 	}
 }
 
-inline void cmp(uint gid,
+INLINE void cmp(uint gid,
 		uint iter,
 		uint *hash,
 		__global uint *bitmaps,
@@ -448,21 +448,15 @@ inline void cmp(uint gid,
  * words. MD4 hash of a key is 128 bit (uint4). */
 __kernel void mscash(__global uint *keys,
 		  __global uint *index,
-		  constant uint *salt
-#if !defined(__OS_X__) && gpu_amd(DEVICE_INFO)
-		__attribute__((max_constant_size(17 * sizeof(uint))))
-#endif
-		  , __global uint *int_key_loc,
+		  constant uint *salt,
+		  __global uint *int_key_loc,
 #if USE_CONST_CACHE
 		  constant
 #else
 		  __global
 #endif
-		  uint *int_keys
-#if !defined(__OS_X__) && USE_CONST_CACHE && gpu_amd(DEVICE_INFO)
-		__attribute__((max_constant_size (NUM_INT_KEYS * 4)))
-#endif
-		 , __global uint *bitmaps,
+		  uint *int_keys,
+		  __global uint *bitmaps,
 		  __global uint *offset_table,
 		  __global uint *hash_table,
 		  __global uint *return_hashes,

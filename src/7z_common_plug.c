@@ -253,16 +253,11 @@ err:
 void *sevenzip_get_salt(char *ciphertext)
 {
 	sevenzip_salt_t cs;
-	sevenzip_salt_t *psalt;
-	static void *ptr;
 	char *ctcopy = xstrdup(ciphertext);
 	char *keeptr = ctcopy;
 	int i;
 	char *p;
 
-	if (!ptr)
-		ptr = mem_alloc_tiny(sizeof(sevenzip_salt_t*),
-		                     sizeof(sevenzip_salt_t*));
 	memset(&cs, 0, sizeof(cs));
 	ctcopy += TAG_LENGTH;
 	p = strtokm(ctcopy, "$");
@@ -285,6 +280,9 @@ void *sevenzip_get_salt(char *ciphertext)
 		cs.crc = atou(p); /* unsigned function */
 	p = strtokm(NULL, "$");
 	cs.aes_length = atoll(p);
+
+	/* Now we know the size of the dyna salt, so we can allocate */
+	static sevenzip_salt_t *psalt;
 	psalt = mem_alloc(sizeof(sevenzip_salt_t) + cs.aes_length - 1);
 	memcpy(psalt, &cs, sizeof(cs));
 	p = strtokm(NULL, "$");
@@ -314,8 +312,7 @@ void *sevenzip_get_salt(char *ciphertext)
 	psalt->dsalt.salt_cmp_size = SALT_CMP_SIZE(sevenzip_salt_t, aes_length, data, psalt->aes_length);
 	psalt->dsalt.salt_alloc_needs_free = 1;
 
-	memcpy(ptr, &psalt, sizeof(void*));
-	return ptr;
+	return &psalt;
 }
 
 int sevenzip_salt_compare(const void *x, const void *y)
@@ -381,27 +378,33 @@ int sevenzip_decrypt(unsigned char *derived_key)
 		while (nbytes > 0) {
 			if (buf[i] != 0) {
 #if DEBUG
-				if (!benchmark_running && options.verbosity >= VERB_DEBUG)
-					fprintf(stderr, YEL "Initial padding check failed\n" NRM);
-#endif
+				if (!benchmark_running && options.verbosity >= VERB_DEBUG) {
+					fprintf(stderr, YEL "Early padding check failed, ");
+					dump_stderr_msg("padding", buf + 16 - pad_size, pad_size);
+					fprintf(stderr, NRM);
+				}
+				if (sevenzip_salt->type == 0x80)
+					fprintf(stderr, YEL "We don't have data for complete decryption\n");
+				break;
+#else
 				return 0;
+#endif
 			}
 			nbytes--;
 			i--;
 		}
 #if DEBUG
-		if (!benchmark_running && options.verbosity >= VERB_DEBUG)
-			fprintf(stderr, "Initial padding check passed\n");
-#endif
+		if (!nbytes && !benchmark_running && options.verbosity >= VERB_DEBUG)
+			fprintf(stderr, "Early padding check passed\n");
+		else
+			nbytes = 0;
+#else
 		if (sevenzip_salt->type == 0x80) /* We only have truncated data */
 			return 1;
+#endif
 	}
 
 	/* Complete decryption */
-#if DEBUG
-	if (!benchmark_running && options.verbosity >= VERB_DEBUG)
-		fprintf(stderr, "AES len %zu, pad size %d\n", sevenzip_salt->aes_length, pad_size);
-#endif
 	out = mem_alloc(sevenzip_salt->aes_length);
 	memcpy(iv, sevenzip_salt->iv, 16);
 	AES_set_decrypt_key(derived_key, 256, &akey);
@@ -413,22 +416,29 @@ int sevenzip_decrypt(unsigned char *derived_key)
 		while (nbytes > 0) {
 			if (out[i] != 0) {
 #if DEBUG
-				if (!benchmark_running && options.verbosity >= VERB_DEBUG)
-					fprintf(stderr, YEL "Padding check failed\n" NRM);
-#endif
+				if (!benchmark_running && options.verbosity >= VERB_DEBUG) {
+					fprintf(stderr, YEL "Full data padding check failed, ");
+					dump_stderr_msg("padding", out + sevenzip_salt->aes_length - pad_size, pad_size);
+					fprintf(stderr, NRM);
+				}
+				break;
+#else
 				goto exit_bad;
+#endif
 			}
 			nbytes--;
 			i--;
 		}
 #if DEBUG
-		if (!benchmark_running && options.verbosity >= VERB_DEBUG)
+		if (!nbytes && !benchmark_running && options.verbosity >= VERB_DEBUG)
 			fprintf(stderr, "Padding check passed\n");
 #endif
 	}
 
+#if !DEBUG
 	if (sevenzip_salt->type == 0x80) /* We only have truncated data */
 		goto exit_good;
+#endif
 
 	/* Decompression before CRC */
 	if (c_type == 1) {
@@ -608,14 +618,14 @@ int sevenzip_decrypt(unsigned char *derived_key)
 
 			// Delta_Init(buf);
 			Delta_Decode(state, sevenzip_salt->preproc_props + 1, out, crc_len);
+#if DEBUG
+			if (!benchmark_running && options.verbosity >= VERB_DEBUG)
+				fprintf(stderr, YEL "DELTA decoding can't fail so result unknown\n" NRM);
+#endif
 		}
 	}
 
 	/* CRC check */
-#if DEBUG
-	if (!benchmark_running && options.verbosity >= VERB_DEBUG)
-		fprintf(stderr, "CRC len %zu\n", crc_len);
-#endif
 	CRC32_Init(&crc);
 	CRC32_Update(&crc, out, (long)crc_len);
 	CRC32_Final(crc_out, crc);
@@ -668,10 +678,21 @@ unsigned int sevenzip_compression_type(void *salt)
 	return my_salt->type;
 }
 
-unsigned int sevenzip_data_len(void *salt)
+unsigned int sevenzip_size_penalty(void *salt)
 {
-	sevenzip_salt_t *my_salt;
+	sevenzip_salt_t *my_salt = *((sevenzip_salt_t**)salt);
+	uint32_t pad_size = sevenzip_padding_size(salt);
+	uint64_t e_size = my_salt->packed_size;
 
-	my_salt = *((sevenzip_salt_t**)salt);
-	return my_salt->packed_size;
+	/* Consider early reject */
+	if (sevenzip_trust_padding) {
+		int shift = pad_size * 8;
+
+		if (shift < 64)
+			e_size >>= shift;
+		else
+			e_size = 0;
+	}
+
+	return (unsigned int)MIN(UINT_MAX, e_size);
 }

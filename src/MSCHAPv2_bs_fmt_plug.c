@@ -66,7 +66,7 @@ john_register_one(&fmt_MSCHAPv2_old);
 #define ALGORITHM_NAME       "MD4 " DES_BS_ALGORITHM_NAME " naive"
 #define BENCHMARK_COMMENT    ""
 #define BENCHMARK_LENGTH     7
-#define PLAINTEXT_LENGTH     125 /* lmcons.h - PWLEN (256) ? 127 ? */
+#define PLAINTEXT_LENGTH     256 /* lmcons.h - PWLEN (256) ? 127 ? */
 #define USERNAME_LENGTH      256 /* lmcons.h - UNLEN (256) / LM20_UNLEN (20) */
 #define DOMAIN_LENGTH        15  /* lmcons.h - CNLEN / DNLEN */
 #define BINARY_SIZE          24
@@ -281,13 +281,11 @@ static char *prepare(char *split_fields[10], struct fmt_main *pFmt)
 			}
 		}
 	}
-	else if (split_fields[0] && split_fields[3] && split_fields[4] && split_fields[5] &&
-	        strlen(split_fields[3]) == CHALLENGE_LENGTH/2 &&
+	else if (strlen(split_fields[3]) == CHALLENGE_LENGTH/2 &&
 	        strlen(split_fields[4]) == CIPHERTEXT_LENGTH &&
 	        strlen(split_fields[5]) == CHALLENGE_LENGTH/2)
 		ret = prepare_long(split_fields);
-	else if (split_fields[0] && split_fields[3] && split_fields[4] &&
-	        strlen(split_fields[3]) == CHALLENGE_LENGTH/4 &&
+	else if (strlen(split_fields[3]) == CHALLENGE_LENGTH/4 &&
 	        strlen(split_fields[4]) == CIPHERTEXT_LENGTH)
 		ret = prepare_short(split_fields);
 	else

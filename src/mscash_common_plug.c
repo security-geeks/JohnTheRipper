@@ -143,7 +143,7 @@ char *mscash1_common_prepare(char *split_fields[10], struct fmt_main *self)
 	if (!strncmp(split_fields[1], FORMAT_TAG, FORMAT_TAG_LEN))
 		return split_fields[1];
 
-	if (!split_fields[0])
+	if (!split_fields[0][0] || !strcmp(split_fields[0], "?"))
 		return split_fields[1];
 
 	// ONLY check, if this string split_fields[1], is ONLY a 32 byte hex string.
@@ -245,7 +245,7 @@ void mscash2_adjust_tests(unsigned encoding, unsigned plain_len, unsigned salt_l
 	if (encoding == UTF_8) {
 		// UTF8 may be up to three bytes per character
 		// but core max. is 125 anyway
-		//self->params.plaintext_length = MIN(125, 3*PLAINTEXT_LENGTH);
+		//self->params.plaintext_length = MIN(MAX_PLAINTEXT_LENGTH, 3*PLAINTEXT_LENGTH);
 		mscash2_common_tests[1].plaintext = "\xc3\xbc";         // German u-umlaut in UTF-8
 		mscash2_common_tests[1].ciphertext = "$DCC2$10240#joe#bdb80f2c4656a8b8591bd27d39064a54";
 		mscash2_common_tests[2].plaintext = "\xe2\x82\xac\xe2\x82\xac"; // 2 x Euro signs
@@ -391,7 +391,7 @@ char *mscash2_common_prepare(char *split_fields[10], struct fmt_main *self)
 		MEM_FREE(cp);
 		return split_fields[1];
 	}
-	if (!split_fields[0])
+	if (!split_fields[0][0] || !strcmp(split_fields[0], "?"))
 		return split_fields[1];
 
 	// ONLY check, if this string split_fields[1], is ONLY a 32 byte hex string.

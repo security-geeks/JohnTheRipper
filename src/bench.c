@@ -56,6 +56,8 @@
 
 #ifndef BENCH_BUILD
 #include "options.h"
+#include "status.h"
+#include "color.h"
 #else
 /*
  * This code was copied from loader.c.  It has been stripped to bare bones
@@ -266,7 +268,7 @@ static void bench_set_keys(struct fmt_main *format,
 				}
 			}
 #ifndef BENCH_BUILD
-			if (options.flags & FLG_MASK_CHK) {
+			if ((options.flags & FLG_MASK_CHK) && ((options.flags & FLG_MASK_STACKED) || mask_mult > 1)) {
 				plaintext[mask_key_len] = 0;
 				if (do_mask_crack(PARENT_KEY))
 					return;
@@ -418,6 +420,8 @@ char *benchmark_format(struct fmt_main *format, int salts,
 			assert(index > 0);
 /* If we have exactly one test vector, reuse its salt in two_salts[1] */
 			salt = two_salts[0];
+/* ... but disable (fake) multi-salt benchmark anyway */
+			salts = 0;
 			dyna_copied = 1;
 		}
 
@@ -444,7 +448,7 @@ char *benchmark_format(struct fmt_main *format, int salts,
 				dbsalt->hash = NULL;
 			}
 		} else {
-			puts("Warning: Could not find salt in db");
+			puts_color(color_warning, "Warning: Could not find salt in db");
 			two_salts_db[index] = test_db->salts;
 		}
 #endif
@@ -630,9 +634,12 @@ void benchmark_cps(uint64_t crypts, clock_t time, char *buffer)
 		sprintf(buffer, "%uK", (unsigned int)cps / 1000);
 	} else if (cps >= 100) {
 		sprintf(buffer, "%u", (unsigned int)cps);
-	} else {
+	} else if (cps >= 10) {
 		unsigned int frac = crypts * clk_tck * 10 / time % 10;
 		sprintf(buffer, "%u.%u", (unsigned int)cps, frac);
+	} else {
+		unsigned int frac = crypts * clk_tck * 100 / time % 100;
+		sprintf(buffer, "%u.%02u", (unsigned int)cps, frac);
 	}
 }
 
@@ -698,7 +705,7 @@ int benchmark_all(void)
 #ifndef BENCH_BUILD
 #if defined(WITH_ASAN) || defined(WITH_UBSAN) || defined(DEBUG)
 	if (benchmark_time)
-		puts("NOTE: This is a debug build, speed will be lower than normal");
+		puts_color(color_notice, "Note: This is a debug build, speed will be lower than normal");
 #endif
 
 	if ((options.flags & FLG_LOOPTEST_CHK) && system("which nvidia-smi >/dev/null") == 0) {
@@ -748,11 +755,11 @@ AGAIN:
 		}
 
 		/* FIXME: Kludge for thin dynamics, and OpenCL formats */
-		/* c3_fmt also added, since it is a somewhat dynamic   */
-		/* format and needs init called to change the name     */
+		/* Monero and crypt also added since they change their name */
 		if ((format->params.flags & FMT_DYNAMIC) ||
 		    strstr(format->params.label, "-opencl") ||
 		    strstr(format->params.label, "-ztex") ||
+		    !strcmp(format->params.label, "Monero") ||
 		    !strcmp(format->params.label, "crypt")) {
 #ifdef HAVE_OPENCL
 /*
@@ -762,7 +769,9 @@ AGAIN:
  * of platforms and devices, option parsing) is performed only once.
 */
 			if (strstr(format->params.label, "-opencl")) {
+				benchmark_running++;
 				opencl_load_environment();
+				benchmark_running--;
 
 				if (get_number_of_available_devices() == 0)
 					continue;
@@ -872,7 +881,7 @@ AGAIN:
 
 #ifndef BENCH_BUILD
 		if ((result = fmt_self_test(format, test_db))) {
-			printf("FAILED (%s)\n", result);
+			printf_color(color_error, "FAILED (%s)\n", result);
 			failed++;
 			goto next;
 		}
@@ -901,7 +910,7 @@ AGAIN:
 				unsigned int cost;
 
 				if (format->methods.tunable_cost_value[i] == NULL) {
-					printf("FAILED (cost %d not defined for format)\n\n", i);
+					printf_color(color_error, "FAILED (cost %d not defined for format)\n", i);
 					failed++;
 					goto next;
 				}
@@ -924,7 +933,7 @@ AGAIN:
 		}
 
 		if (pruned && !format->params.tests->ciphertext) {
-			printf("FAILED (--cost pruned all %d test vectors)\n\n", pruned);
+			printf_color(color_error, "FAILED (--cost pruned all %d test vectors)\n", pruned);
 			failed++;
 			goto next;
 		}
@@ -934,11 +943,12 @@ AGAIN:
 		 * low work sizes, we now need a proper auto-tune for benchmark, with
 		 * internal mask if applicable.
 		 */
+		benchmark_running = 1;
 		format->methods.reset(test_db);
 #endif
 		if ((result = benchmark_format(format, salts, &results_m, test_db))) {
 			puts(result);
-			failed++;
+			failed += !event_abort;
 			goto next;
 		}
 #if HAVE_OPENCL
@@ -972,7 +982,7 @@ AGAIN:
 		if (msg_1) {
 			if ((result = benchmark_format(format, 1, &results_1, test_db))) {
 				puts(result);
-				failed++;
+				failed += !event_abort;
 				goto next;
 			}
 #if HAVE_OPENCL
@@ -1072,6 +1082,7 @@ next:
 		ldr_free_db(test_db, 1);
 		fmt_done(format);
 #ifndef BENCH_BUILD
+		emms();
 		if (options.flags & FLG_MASK_CHK) {
 			mask_done();
 			mask_destroy();
@@ -1084,6 +1095,12 @@ next:
 #endif
 	} while ((format = format->next) && !event_abort);
 
+	{
+		const char *msg = hugepage_report();
+		if (msg)
+			puts(msg);
+	}
+
 #ifdef HAVE_OPENCL
 /*
  * Allow OpenCL build's "--test" to run on no-OpenCL systems.
@@ -1093,15 +1110,17 @@ next:
 		opencl_was_skipped = " (OpenCL formats skipped)";
 #endif
 
-	if (failed && total > 1 && !event_abort)
+	if (failed && total > 1)
 		printf("%u out of %u tests have FAILED%s\n", failed, total, opencl_was_skipped);
-	else if (total > 1 && !event_abort && john_main_process) {
+	else if (total > 1 && john_main_process) {
+		const char *all = event_abort ? "" : "All ";
+		const char *not = event_abort ? ", last one aborted" : "";
 #ifndef BENCH_BUILD
 		if (benchmark_time)
-			printf("%u formats benchmarked%s.\n", total, opencl_was_skipped);
+			printf("%s%u formats benchmarked%s%s\n", all, total, not, opencl_was_skipped);
 		else
 #endif
-			printf("All %u formats passed self-tests%s!\n", total, opencl_was_skipped);
+			printf("%s%u formats passed self-tests%s\n", all, total, opencl_was_skipped);
 	}
 
 #ifndef BENCH_BUILD

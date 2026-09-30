@@ -1,7 +1,7 @@
 /*
  * JtR format to crack password of BestCrypt v4 encrypted volume
- * 
- * This implementation relies on findings from @trounce1 and @kholia 
+ *
+ * This implementation relies on findings from @trounce1 and @kholia
  * reverse-engineering work
  * Copyright (c) 2021 Jean-Christophe Delaunay <jean-christophe.delaunay [at] synacktiv.com>
  *
@@ -48,6 +48,8 @@ john_register_one(&fmt_bestcrypt_ve);
 
 #if !defined(JOHN_NO_SIMD) && defined(__XOP__)
 #define SCRYPT_ALGORITHM_NAME "Salsa20/8 128/128 XOP"
+#elif !defined(JOHN_NO_SIMD) && defined(__AVX512VL__)
+#define SCRYPT_ALGORITHM_NAME "Salsa20/8 128/128 AVX512VL"
 #elif !defined(JOHN_NO_SIMD) && defined(__AVX__)
 #define SCRYPT_ALGORITHM_NAME "Salsa20/8 128/128 AVX"
 #elif !defined(JOHN_NO_SIMD) && defined(__SSE2__)
@@ -60,7 +62,7 @@ john_register_one(&fmt_bestcrypt_ve);
 #define BENCHMARK_COMMENT       " (32768, 16, 1)"
 #define BENCHMARK_LENGTH        0x507
 #define BINARY_SIZE             0
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #define SALT_SIZE               sizeof(*cur_salt)
 #define BINARY_ALIGN            1
 #define SALT_ALIGN              sizeof(int)
@@ -381,16 +383,19 @@ static int crypt_all(int *pcount, struct db_salt *salt)
 		}
 		*/
 
-		/* we now compute sha256(decrypted_content[0:0x40]) and 
+		/* we now compute sha256(decrypted_content[0:0x40]) and
 		compare it with decrypted_content[0x40:0x60] */
 		SHA256_Init(&ctx);
 		SHA256_Update(&ctx, out, 0x40);
 		SHA256_Final(sha256_hash, &ctx);
-		cracked[index] = (0 == memcmp(sha256_hash, out + 0x40, 0x20));
+
+		if (!memcmp(sha256_hash, out + 0x40, 0x20)) {
+			cracked[index] = 1;
 #ifdef _OPENMP
 #pragma omp atomic
 #endif
-		any_cracked |= 1;
+			any_cracked |= 1;
+		}
 	}
 
 	if (failed) {

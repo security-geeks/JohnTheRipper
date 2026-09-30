@@ -68,7 +68,7 @@ john_register_one(&fmt_NETLMv2);
 #define ALGORITHM_NAME       "MD4 HMAC-MD5 32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT    ""
 #define BENCHMARK_LENGTH     7
-#define PLAINTEXT_LENGTH     125 /* lmcons.h - PWLEN (256) ? 127 ? */
+#define PLAINTEXT_LENGTH     256 /* lmcons.h - PWLEN (256) ? 127 ? */
 #define USERNAME_LENGTH      60 /* lmcons.h - UNLEN (256) / LM20_UNLEN (20) */
 #define DOMAIN_LENGTH        45 /* lmcons.h - CNLEN / DNLEN */
 #define BINARY_SIZE          16
@@ -183,7 +183,9 @@ static char *prepare(char *split_fields[10], struct fmt_main *self)
 
 	if (!strncmp(split_fields[1], FORMAT_TAG, FORMAT_TAG_LEN))
 		return split_fields[1];
-	if (!login || !uid || !srv_challenge || !nethashv2 || !cli_challenge)
+	if (!login[0] || !strcmp(login, "?"))
+		return split_fields[1];
+	if (!srv_challenge[0] || !nethashv2[0] || !cli_challenge[0])
 		return split_fields[1];
 
 	/* DOMAIN\USER: -or- USER::DOMAIN: */

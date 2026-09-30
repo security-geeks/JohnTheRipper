@@ -18,7 +18,7 @@ typedef struct {
 	char v[PLAINTEXT_LENGTH+1];
 } sha512_key;
 
-inline void sha512(__global const char *password, uint8_t pass_len,
+INLINE void sha512(__global const char *password, uint8_t pass_len,
 	__global uint64_t *hash, uint32_t offset)
 {
 	sha512_ctx ctx;
@@ -113,15 +113,10 @@ __kernel void kernel_sha512(
 __kernel void kernel_cmp(
 	__constant uint64_t *binary,
 	__global uint64_t *hash,
-	__global uint32_t *result)
+	__global volatile uint32_t *result)
 {
 	uint32_t idx = get_global_id(0);
 
-	if (idx == 0)
-		*result = 0;
-
-	barrier(CLK_GLOBAL_MEM_FENCE);
-
 	if (*binary == hash[idx])
-		*result = 1;
+		atomic_or(result, 1);
 }

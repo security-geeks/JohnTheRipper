@@ -5,6 +5,11 @@
 extern "C" {
 #endif
 
+#if defined(_TCPHDR) || defined(th_off)
+/* Use the system's e.g. on AIX to avoid clashing with their field macros */
+#define tcp_hdr tcphdr
+#else
+
 #include "arch.h"
 #include <stdint.h>
 
@@ -26,9 +31,10 @@ struct tcp_hdr {
 	uint16_t th_urp;
 };
 
+#endif
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-

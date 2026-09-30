@@ -47,7 +47,6 @@ m4_include([m4/ax_ztex.m4])
 
 dnl Define precious variables. They get included in --help and need no AC_SUBST
 AC_ARG_VAR([CFLAGS_EXTRA], [additional CFLAGS for -Woptions and other things, not used during ./configure but put in resulting Makefile])
-AC_ARG_VAR([YASM], [full pathname of yasm (for optional AES-NI support)])
 AC_ARG_VAR([AS], [full pathname of assembler to use])
 AC_ARG_VAR([AR], [full pathname of "ar" to use])
 AC_ARG_VAR([LD], [full pathname of linker to use])
@@ -65,7 +64,6 @@ AC_ARG_ENABLE([asan], [AS_HELP_STRING([--enable-asan], [* Build with AddressSani
 AC_ARG_ENABLE([ubsan], [AS_HELP_STRING([--enable-ubsan], [* Build with UndefinedBehaviorSanitizer])], [ubsan=$enableval], [ubsan=no])
 AC_ARG_ENABLE([ubsantrap], [AS_HELP_STRING([--enable-ubsantrap], [* Build with UndefinedBehaviorSanitizer, crashes on failure])], [ubsantrap=$enableval], [ubsantrap=no])
 AC_ARG_ENABLE([simd], [AS_HELP_STRING([--disable-simd, --enable-simd=foo], [* Build forcing SIMD logic to be disabled, or force use of "foo" for SIMD (eg. --enable-simd=altivec)])], [simd=$enableval], [simd=yes])
-AC_ARG_ENABLE([plugin-dependencies], [AS_HELP_STRING([--disable-plugin-dependencies], [Do not create best-effort Makefile dependencies for plugins])], [plug_deps=$enableval], [plug_deps=yes])
 
 AC_ARG_ENABLE([werror], [AS_HELP_STRING([--enable-werror], [Treat warnings as errors])], [werror=$enableval], [werror=no])
 
@@ -228,10 +226,23 @@ if test "x$ubsantrap" = xyes ; then
    LDFLAGS=${LDFLAGS_BAK}
 fi
 
+   dnl Enable auto dependency generation if supported by the compiler
+   CFLAGS_EX=""
+   JTR_FLAG_CHECK([-MMD -MP -MF conftest.d], 1)
+   if test "x${CFLAGS_EX}" != x ; then
+      if test $(grep -Ec "conftest.o: +conftest.c" conftest.d) = 1; then
+         AC_SUBST([DEPFLAGS],['-MMD -MP -MF $(DEPDIR)/$(notdir $*).d'])
+      else
+         AC_MSG_RESULT([Unexpected conftest.d content, disabling auto dependency generation])
+      fi
+   fi
 
    dnl now fill out CFLAGS
    CFLAGS_EX=""
    JTR_FLAG_CHECK([-Wall], 1)
+
+   dnl Add -std=gnu99 if supported
+   JTR_FLAG_CHECK([-std=gnu99], 1)
 
    dnl False positives from gcc 8
    if (test "x$asan" != xyes); then
@@ -436,6 +447,10 @@ case "$simd" in
     JTR_FLAG_CHECK_LINK([-mpower8vector], 2)
     SIMD_NAME="Altivec2"
     ;;
+  avx512)
+    JTR_FLAG_CHECK_LINK([-mavx512bw -mavx512vl -mavx512dq], 2)
+    SIMD_NAME="AVX-512"
+    ;;
   dnl Handle known cases of --enable-simd=foo --> -mfoo
   mmx|sse*|ssse3|avx*|xop*)
     SIMD_NAME=`echo $simd | tr a-z A-Z`
@@ -479,7 +494,12 @@ case "$host_cpu" in
         JTR_ARM_SIMD_LOGIC
       )
     ;;
-  arm*) ARCH_LINK=arm32le.h endian=little
+  arm*) endian=little
+    if test "$CPU_BIT_STR" -eq 64; then
+      ARCH_LINK=arm64le.h
+    else
+      ARCH_LINK=arm32le.h
+    fi
     AC_MSG_CHECKING([special compiler flags])
     AC_MSG_RESULT([ARM])
     JTR_ARM_SPECIAL_LOGIC
@@ -895,7 +915,11 @@ AC_CHECK_FUNCS([posix_memalign aligned_alloc memalign __mingw_aligned_malloc _al
 AC_CACHE_SAVE
 
 if test "x$simd" != xno ; then
-  CPU_BEST_FLAGS_MAIN=-DJOHN_$(echo ${SIMD_NAME} | tr .a-z _A-Z)
+  if test "x$SIMD_NAME" = "xAVX-512"; then
+    CPU_BEST_FLAGS_MAIN=-DJOHN_AVX512BW
+  else
+    CPU_BEST_FLAGS_MAIN=-DJOHN_$(echo ${SIMD_NAME} | tr .a-z _A-Z)
+  fi
 fi
 
 AC_SUBST([CC_CPU],["${CPU_BEST_FLAGS}"])
@@ -922,60 +946,6 @@ AS_IF([test "$CPU_BIT_STR" -eq 64],
    [AC_DEFINE([ARCH_BITS_LOG], 6, ["Native CPU width, log"])],
    [AC_DEFINE([ARCH_BITS_LOG], 5, ["Native CPU width, log"])])
 AC_DEFINE_UNQUOTED([ARCH_BITS_STR], ["$CPU_BIT_STR"], ["Native CPU width, string"])
-
-if test "$CPU_BIT_STR" = "32"; then
-   aesni_arch="86"
-else
-   aesni_arch="64"
-fi
-AC_SUBST([AESNI_ARCH],["$aesni_arch"])
-
-aesni_os=""
-aesni_options="DISABLED"
-
-if test "x$ax_intel_x32" = xyes; then
-   aesni_os=linux aesni_options="-g dwarf2 -f elfx32"
-else
-   case "${host}_${CFLAGS}" in
-      *_*-mno-mmx*) ;;
-      *_*-mno-sse2*) ;;
-      x86_64*darwin*)
-         aesni_os=darwin
-         aesni_options="--prefix=_ -f macho${CPU_BIT_STR}"
-      ;;
-      i?86*darwin*)
-         aesni_os=darwin
-         aesni_options="-f macho${CPU_BIT_STR}"
-      ;;
-      *86*linux*)
-         aesni_os=linux
-         aesni_options="-g dwarf2 -f elf${CPU_BIT_STR}"
-      ;;
-      *86*cygwin*)
-         aesni_os=cygwin
-         aesni_options="-f win${CPU_BIT_STR}"
-      ;;
-   esac
-fi
-if test "x$aesni_options" != xDISABLED; then
-   AC_CACHE_CHECK([for yasm that supports "$aesni_options"], [ac_cv_path_YASM],
-      [AC_PATH_PROGS_FEATURE_CHECK([YASM], [yasm],
-         [[yasmout=`$ac_path_YASM $aesni_options 2>&1 | grep "No input files"`
-           test "x$yasmout" != x \
-           && ac_cv_path_YASM=$ac_path_YASM ac_path_YASM_found=:]]
-         )])
-fi
-
-if test "x$aesni_options" != xDISABLED -a "x$ac_path_YASM_found" != xfalse; then
-   using_aesni="run-time detection"
-elif test "$with_openssl" = "yes" -a "$cpu_family" = intel; then
-   using_aesni="depends on OpenSSL"
-else
-   using_aesni=no
-fi
-AC_SUBST([YASM], [$ac_cv_path_YASM])
-AC_SUBST([AESNI_OS],["$aesni_os"])
-AC_SUBST([YASM_OPTIONS],["$aesni_options"])
 
 JTR_SYSTEMS_SPECIFIC_LOGIC
 
@@ -1076,33 +1046,12 @@ dnl      AC_DEFINE([DYNAMIC_DISABLED], 1, [Disables Dynamic format completely])
 dnl   fi
 dnl fi
 
-dnl ======================================================================
-dnl Code  to create @PLUGFORMATS_OBJS@ and
-dnl john_buildrule.h moved from Makefile.in to here.
-dnl don't build opencl_*plug.c unless an opencl build
-dnl ======================================================================
-if test x$using_cl = xyes ; then
-  AC_MSG_NOTICE([creating *_plug.c and OpenCL object rules])
-else
-  AC_MSG_NOTICE([creating *_plug.c rules])
-fi
-if test "`echo *_plug.c`" != "*_plug.c"; then
-   AC_SUBST([PLUGFORMATS_OBJS],[`echo *_plug.c | sed 's/opencl[[A-Za-z0-9_\-]]*\.c //g;s/\.c/.o/g'`])
-   AC_SUBST([OPENCL_PLUGFORMATS_OBJS],[`echo opencl*_plug.c | sed 's/\.c/.o/g'`])
-   if test "x$plug_deps" = xyes -a "x$PERL" != x ; then
-      AC_MSG_NOTICE([creating Makefile dependencies])
-      AC_SUBST([PLUGFORMATS_DEPS],[`$PERL ./plugin_deps.pl *_plug.c`])
-   fi
-fi
-
 AC_MSG_NOTICE([creating ./john_build_rule.h])
 echo "#define JOHN_BLD \"${host_os} ${CPU_BIT_STR}-bit${using_x32} ${host_cpu} ${SIMD_NAME} AC\"" > john_build_rule.h
 
 AC_SUBST([HOST_OS],["$host_os"])
 AC_CONFIG_FILES([Makefile
-                 aes/Makefile
-                 aes/aesni/Makefile
-                 aes/openssl/Makefile
+                 mbedtls/Makefile
                  secp256k1/Makefile
                  ed25519-donna/Makefile
 		 poly1305-donna/Makefile])
@@ -1117,50 +1066,6 @@ dnl This actually writes Makefile et al.
 AC_OUTPUT(,echo "timestamp from configure.in" > autoconfig-stamp-h)
 
 CFLAGS_EXTRA=$CFLAGS_EXTRA_BACKUP
-
-dnl ======================================================================
-dnl Create fmt_externs.h and fmt_registers.h
-dnl This needs arch.h to be linked so can't happen before
-dnl AC_OUTPUT
-dnl ======================================================================
-AC_MSG_NOTICE([creating ./fmt_externs.h])
-rm -f fmt_externs.h
-
-CFLAGS_EX2=
-if test "x$simd" = xno ; then
-   CFLAGS_EX2=-DJOHN_NO_SIMD
-fi
-
-if test "`echo *_fmt_plug.c`" != "*_fmt_plug.c"; then
-   $CPP -P -DAC_BUILT $CFLAGS_EX2 $CPPFLAGS $CPU_BEST_FLAGS $CFLAGS $HAVE_OPENCL $CFLAGS_EXTRA $OPENMP_CFLAGS $OPENSSL_CFLAGS -DFMT_EXTERNS_H *_fmt_plug.c | LC_ALL=C $GREP "extern struct fmt_main" | LC_ALL=C $SORT -f > fmt_externs.h
-fi
-dnl if the file was not created, then bail.
-if test -f fmt_externs.h -a ! -s fmt_externs.h; then
-  cp Makefile.stub Makefile
-  AC_MSG_ERROR([The build of fmt_externs.h failed. Can not continue!])
-fi
-dnl if file does not exist, then create a blank one (i.e. no *_plug.c files)
-if test ! -f fmt_externs.h; then
-  echo >fmt_externs.h
-fi
-AC_MSG_NOTICE([creating ./fmt_registers.h])
-rm -f fmt_registers.h
-if test "`echo *_fmt_plug.c`" != "*_fmt_plug.c"; then
-   $CPP -P -DAC_BUILT $CFLAGS_EX2 $CPPFLAGS $CPU_BEST_FLAGS $CFLAGS $CFLAGS_EXTRA $OPENMP_CFLAGS $OPENSSL_CFLAGS -DFMT_REGISTERS_H *_fmt_plug.c | LC_ALL=C $GREP "john_register_one" | LC_ALL=C $SORT -f > fmt_registers.h
-fi
-dnl if the file was not created, then bail.
-if test -f fmt_registers.h -a ! -s fmt_registers.h; then
-  cp Makefile.stub Makefile
-  AC_MSG_ERROR([The build of fmt_registers.h failed. Can not continue!])
-fi
-dnl if file does not exist, then create a blank one (i.e. no *_plug.c files)
-if test ! -f fmt_registers.h; then
-  echo >fmt_registers.h
-fi
-
-if test "`echo opencl_*_fmt_plug.c`" != "opencl_*_fmt_plug.c"; then
-   $CPP -P -DAC_BUILT $CFLAGS_EX2 $CPPFLAGS $CPU_BEST_FLAGS $CFLAGS $HAVE_OPENCL $CFLAGS_EXTRA $OPENMP_CFLAGS $OPENSSL_CFLAGS -DFMT_REGISTERS_H opencl_*_fmt_plug.c | LC_ALL=C $GREP "john_register_one" | LC_ALL=C $SORT -f >> fmt_registers.h
-fi
 
 dnl ======================================================================
 dnl            ONLY _COSMETICAL_ OUTPUT STUFF BELOW THIS LINE
@@ -1264,7 +1169,6 @@ dnl ======================================================================
 Configured for building John the Ripper ${PACKAGE_VERSION}:
 
 Target CPU ......................................... ${CPU_NAME}, ${CPU_BIT_STR}-bit ${using_endian}${using_x32}
-AES-NI support ..................................... ${using_aesni}
 Target OS .......................................... ${host_os}
 Cross compiling .................................... ${cross_compiling}
 Legacy arch header ................................. ${ARCH_LINK}
@@ -1302,5 +1206,10 @@ fi
 
 echo "Install missing libraries to get any needed features that were omitted."
 echo ""
-echo "Configure finished.  Now \"${use_make} -s clean && ${use_make} -sj4\" to compile."
+
+NPROC=`(exec nproc) 2> /dev/null`
+test -n "$NPROC" || NPROC=`grep -c '^processor' /proc/cpuinfo 2> /dev/null`
+test -n "$NPROC" || NPROC=4
+
+echo "Configure finished.  Now \"${use_make} -s clean && ${use_make} -sj${NPROC}\" to compile."
 dnl ======================================================================

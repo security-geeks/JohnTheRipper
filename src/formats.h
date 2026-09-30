@@ -91,7 +91,7 @@ struct db_salt;
 #define FMT_NOT_EXACT			0x00000100
 /*
  * This format uses a dynamic sized salt, and its salt structure
- * 'derives' from the dyna_salt type defined in dyna_salt.h
+ * 'derives' from the dyna_salt_t type defined in dyna_salt.h
  */
 #define FMT_DYNA_SALT			0x00000200
 /*
@@ -383,7 +383,10 @@ struct fmt_methods {
  * The count is passed by reference and must be updated by crypt_all() if it
  * computes other than the requested count (such as if it generates additional
  * candidate passwords on its own).  The updated count is used for c/s rate
- * calculation.  The return value is thus in the 0 to updated *count range. */
+ * calculation.  The return value is thus in the 0 to updated *count range.
+ * A special case is that during autotune (only), it may return -1 to signal
+ * to the autotune logic that there was an OpenCL failure, so it can silently
+ * back down. */
 	int (*crypt_all)(int *count, struct db_salt *salt);
 
 /* These functions calculate a hash out of a ciphertext that has just been
@@ -514,7 +517,7 @@ extern int fmt_default_salt_hash(void *salt);
 extern void fmt_default_set_salt(void *salt);
 extern void fmt_default_clear_keys(void);
 extern int fmt_default_get_hash(int index);
-/* this is a salt_hash default specifically for dyna_salt type formats */
+/* this is a salt_hash default specifically for dyna_salt_t type formats */
 extern int fmt_default_dyna_salt_hash(void *salt);
 
 /*

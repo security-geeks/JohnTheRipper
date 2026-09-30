@@ -33,9 +33,12 @@ john_register_one(&fmt_pbkdf2_hmac_md5);
 #else
 #define ALGORITHM_NAME          "PBKDF2-MD5 32/" ARCH_BITS_STR
 #endif
+#define BENCHMARK_COMMENT       ""
+#define BENCHMARK_LENGTH        0x107
+
 #define SALT_SIZE               sizeof(struct custom_salt)
 #define SALT_ALIGN              sizeof(uint32_t)
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #if SIMD_COEF_32
 #define MIN_KEYS_PER_CRYPT      (SIMD_COEF_32 * SIMD_PARA_MD5)
 #define MAX_KEYS_PER_CRYPT      (SIMD_COEF_32 * SIMD_PARA_MD5 * 2)

@@ -1,6 +1,6 @@
 /*
  * MD5 OpenCL kernel based on Solar Designer's MD5 algorithm implementation at:
- * http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5
+ * https://openwall.info/wiki/people/solar/software/public-domain-source-code/md5
  *
  * This software is Copyright (c) 2010, Dhiru Kholia <dhiru.kholia at gmail.com>
  * and Copyright (c) 2012-2023, magnum
@@ -62,7 +62,7 @@
 /* This handles an input of 0xffffffffU correctly */
 #define BITMAP_SHIFT ((BITMAP_MASK >> 5) + 1)
 
-inline void md5_encrypt(uint *hash, uint *W, uint len)
+INLINE void md5_encrypt(uint *hash, uint *W, uint len)
 {
 	hash[0] = 0x67452301;
 	hash[1] = 0xefcdab89;
@@ -142,7 +142,7 @@ inline void md5_encrypt(uint *hash, uint *W, uint len)
 	STEP(I, hash[1], hash[2], hash[3], hash[0], W[9], 0xeb86d391, 21);
 }
 
-inline void cmp_final(uint gid,
+INLINE void cmp_final(uint gid,
 		uint iter,
 		uint *hash,
 		__global uint *offset_table,
@@ -188,7 +188,7 @@ inline void cmp_final(uint gid,
 	}
 }
 
-inline void cmp(uint gid,
+INLINE void cmp(uint gid,
 		uint iter,
 		uint *hash,
 #if USE_LOCAL_BITMAPS
@@ -263,11 +263,8 @@ __kernel void md5(__global uint *keys,
 #else
 		  __global
 #endif
-		  uint *int_keys
-#if !defined(__OS_X__) && USE_CONST_CACHE && gpu_amd(DEVICE_INFO)
-		__attribute__((max_constant_size (NUM_INT_KEYS * 4)))
-#endif
-		 , __global uint *bitmaps,
+		  uint *int_keys,
+		  __global uint *bitmaps,
 		  __global uint *offset_table,
 		  __global uint *hash_table,
 		  __global uint *return_hashes,

@@ -38,9 +38,29 @@ For building with OpenSSL, not only the runtime libraries are needed but also
 "development" stuff like header files.  This is often a separate package, so,
 e.g., for Ubuntu you need "libssl-dev" as well as "libssl".
 
-Some helper tools are written in Python.  A couple helper tools (vncpcap2john
-and SIPdump) need libpcap.  A couple of formats need extra libraries in order
-to get included:
+Some helper tools are written in Perl or Python.  To get everything needed
+for Perl, you have to install from CPAN - for example like this:
+
+	cd ~/src/john/run
+	cpanm --installdeps .
+
+Install all Python modules using pip3 into a virtual environment:
+
+	cd ~/src/john/run
+	python3 -m venv venv
+	. venv/bin/activate
+	pip3 install -r requirements.txt
+	deactivate
+
+Later use:
+
+	cd ~/src/john/run
+	. venv/bin/activate
+	 (run tools as needed)
+	deactivate
+
+A couple helper tools (vncpcap2john and SIPdump) need libpcap.  A couple of
+formats need extra libraries in order to get included:
 
 	mozilla		libnss
 	krb5-18/23	libkrb5
@@ -152,9 +172,9 @@ with printing a full "./configure" command line to use. For most people,
 it's actually overkill. Spend the time learning tricks instead!
 
 
-	Optimal build on OS X.
+	Optimal build on macOS.
 
-Using OS X, you can install Xcode (free in App Store) and then its "command
+Using macOS, you can install Xcode (free in App Store) and then its "command
 line tools" and after that a normal build should work fine.  However, using
 native gcc (which is really clang) results in suboptimal performance and some
 formats are disabled due to ancient OpenSSL.  Also, clang doesn't have any
@@ -176,9 +196,9 @@ that probably work fine but these instructions are for "Homebrew":
   5. Configure, possibly adding a CC option for pointing to a specific gcc and
      using whatever LDFLAGS and CPPFLAGS was recommended when you installed
      Homebrew's OpenSSL:
-        ./configure CC="/usr/local/bin/gcc-13" \
-          LDFLAGS="-L/usr/local/opt/openssl/lib " \
-          CPPFLAGS="-I/usr/local/opt/openssl/include"
+        ./configure CC="/opt/homebrew/bin/gcc-14" \
+          LDFLAGS="-L/opt/homebrew/lib" \
+          CPPFLAGS="-I/opt/homebrew/include"
   6. Clean old files and make:
         make -s clean && make -sj4
 

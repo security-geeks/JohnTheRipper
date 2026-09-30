@@ -46,7 +46,7 @@ typedef struct {
 #define LEAN
 #endif
 
-inline void S2KItSaltedSHA1Generator(__global const uchar *password,
+INLINE void S2KItSaltedSHA1Generator(__global const uchar *password,
                                      uint password_length,
                                      __constant uchar *salt,
                                      uint _count,
@@ -60,7 +60,7 @@ inline void S2KItSaltedSHA1Generator(__global const uchar *password,
 #ifdef LEAN
 	uchar keybuf[128 + 64+1 + PLAINTEXT_LENGTH + SALT_LENGTH];
 #else
-	uchar keybuf[64 * (PLAINTEXT_LENGTH + SALT_LENGTH)];
+	uchar keybuf[65 * (PLAINTEXT_LENGTH + SALT_LENGTH) + 256];
 	uint bs;
 #endif
 
@@ -161,7 +161,7 @@ __kernel void gpg(__global const gpg_password *inbuffer,
 
 /* SHA-256 based S2K */
 
-inline void S2KItSaltedSHA256Generator(__global const uchar *ipassword,
+INLINE void S2KItSaltedSHA256Generator(__global const uchar *ipassword,
                                        uint password_length,
                                        __constant uchar *isalt,
                                        uint count, // iterations
@@ -227,7 +227,7 @@ __kernel void gpg_sha256(__global const gpg_password *inbuffer,
 
 /* SHA-512 based S2K */
 
-inline void S2KItSaltedSHA512Generator(__global const uchar *ipassword,
+INLINE void S2KItSaltedSHA512Generator(__global const uchar *ipassword,
                                        uint password_length,
                                        __constant uchar *isalt,
                                        uint count, // iterations

@@ -35,7 +35,7 @@ static struct fmt_main *self;
 
 #define FORMAT_LABEL        "wpapsk-pmk-opencl"
 #define FORMAT_NAME         "WPA/WPA2/PMF/PMKID master key"
-#define ALGORITHM_NAME      "MD5/SHA-1/SHA-2 OpenCL"
+#define ALGORITHM_NAME      "MD5/SHA-1/HMAC-SHA256/AES-CMAC OpenCL"
 
 #define SEED                256
 
@@ -198,7 +198,7 @@ static char* get_key(int index)
 
 static void init(struct fmt_main *_self)
 {
-	static char valgo[32] = "";
+	static char valgo[sizeof(ALGORITHM_NAME) + 12] = "";
 
 	self = _self;
 

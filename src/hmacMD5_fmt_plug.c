@@ -40,7 +40,7 @@ john_register_one(&fmt__hmacMD5);
 #define BENCHMARK_COMMENT       ""
 #define BENCHMARK_LENGTH        7
 
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 
 #define PAD_SIZE                64
 #define PAD_SIZE_W              (PAD_SIZE/4)
@@ -204,7 +204,7 @@ static char *prepare(char *split_fields[10], struct fmt_main *self)
 		                     flg_Base64_MIME_TRAIL_EQ, 0);
 		if (len2 > sizeof(out) - len - 3)
 			return split_fields[1];
-		len = len2;
+		o[len = len2] = 0;
 		if (!(p = strchr(o, ' ')))
 			return split_fields[1];
 		p++;

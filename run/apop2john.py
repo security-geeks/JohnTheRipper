@@ -14,7 +14,7 @@
 try:
     from scapy.all import *
 except ImportError:
-    print("scapy is missing, run 'pip install --user scapy' to install it!")
+    print("scapy is missing, run 'pip install --user scapy' to install it!", file=sys.stderr)
     exit(1)
 
 from binascii import hexlify
@@ -23,7 +23,7 @@ import os
 import re
 
 if len(argv) < 2:
-    print('Usage: ./apop2john.py <pcap files>')
+    print('Usage: ./apop2john.py <pcap files>', file=sys.stderr)
     exit(1)
 
 filenames = argv[1:]
@@ -43,22 +43,22 @@ for filename in filenames:
 
         pkt = bytes(packet[TCP].payload)
 
-        if packet.sport == 110 and re.search(b'\+OK\ .*\ \<.+\>', pkt):
+        if packet.sport == 110 and re.search(br'\+OK .* <.+>', pkt):
             src_ip = packet[IP].src
             dst_ip = packet[IP].dst
-            res = re.search(b'\+OK\ .*\ (\<.+\>)', pkt)
+            res = re.search(br'\+OK .* (<.+>)', pkt)
             apop_salt[(src_ip, dst_ip)] = res.group(1).strip()
-        elif packet.dport == 110 and re.search(b'APOP\ .+\ (.+)', pkt):
+        elif packet.dport == 110 and re.search(b'APOP .+ (.+)', pkt):
             src_ip = packet[IP].dst
             dst_ip = packet[IP].src
-            res = re.search(b'APOP\ (.+)\ (.+)', pkt)
+            res = re.search(b'APOP (.+) (.+)', pkt)
             apop_user[(src_ip, dst_ip)] = res.group(1).strip()
             apop_hash[(src_ip, dst_ip)] = res.group(2).strip()
 
     for ips_s, salt in apop_salt.items():
         for ips_h, ahash in apop_hash.items():
             for ips_u, user in apop_user.items():
-                if (ips_s == ips_h == ips_u): 
+                if (ips_s == ips_h == ips_u):
                     print('{user}:$dynamic_1017${hash}$HEX${salt}'.format(
                         user=user.decode('utf-8'),
                         hash=ahash.decode('utf-8'),

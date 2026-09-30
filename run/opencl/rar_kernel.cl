@@ -54,7 +54,7 @@ typedef struct {
 /*
  * This version does several blocks at a time
  */
-inline void sha1_mblock(uint *W, uint *out, uint blocks)
+INLINE void sha1_mblock(uint *W, uint *out, uint blocks)
 {
 	uint i;
 	uint ctx[5];
@@ -71,7 +71,7 @@ inline void sha1_mblock(uint *W, uint *out, uint blocks)
 		out[i] = ctx[i];
 }
 
-inline void sha1_empty_final(uint *W, uint *ctx, const uint tot_len)
+INLINE void sha1_empty_final(uint *W, uint *ctx, const uint tot_len)
 {
 	uint len = ((tot_len & 63) >> 2) + 1;
 
@@ -178,7 +178,7 @@ __kernel void RarHashLoop(const __global uint *unicode_pw, const __global uint *
  *
  * Returns 0 for early rejection, 1 if passed
  */
-inline int check_huffman(uchar *next) {
+INLINE int check_huffman(uchar *next) {
 	uint bits, hold, i;
 	int left;
 	uint ncount[4] = { 0 };
@@ -239,16 +239,17 @@ inline int check_huffman(uchar *next) {
 /*
  * Returns 0 for early rejection, 1 if passed
  */
-inline int check_rar(__global rar_file *cur_file, __global uint *_key, __global uint *_iv)
+INLINE int check_rar(__global rar_file *cur_file, __global uint *_key, __global uint *_iv, __local aes_local_t *lt)
 {
-	AES_KEY aes_ctx;
+	AES_KEY aes_ctx; aes_ctx.lt = lt;
 	uchar iv[16];
 	uchar plain[16 + 8]; /* Some are safety margin for check_huffman() */
 	__global uchar *key = (__global uchar*)_key;
 
+	AES_set_decrypt_key(key, 128, &aes_ctx);
+
 	if (cur_file->type == 0) {	/* rar-hp mode */
 		memcpy_gp(iv, _iv, 16);
-		AES_set_decrypt_key(key, 128, &aes_ctx);
 		AES_cbc_decrypt(cur_file->data, plain, 16, &aes_ctx, iv);
 
 		return !memcmp_pc(plain, "\xc4\x3d\x7b\x00\x40\x07\x00", 7);
@@ -267,7 +268,6 @@ inline int check_rar(__global rar_file *cur_file, __global uint *_key, __global 
 				else
 					memcpy_gp(iv, cur_file->last_iv, 16);
 
-				AES_set_decrypt_key(key, 128, &aes_ctx);
 				AES_cbc_decrypt(cur_file->last_data, plain, 16, &aes_ctx, iv);
 
 				if (memcmp_pc(&plain[pad_start], "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", pad_size))
@@ -283,7 +283,6 @@ inline int check_rar(__global rar_file *cur_file, __global uint *_key, __global 
 
 			/* Full decryption with CRC check */
 			memcpy_gp(iv, _iv, 16);
-			AES_set_decrypt_key(key, 128, &aes_ctx);
 			CRC32_Init(&crc);
 
 			while (size) {
@@ -303,7 +302,6 @@ inline int check_rar(__global rar_file *cur_file, __global uint *_key, __global 
 
 			/* Decrypt just one block for early rejection */
 			memcpy_gp(iv, _iv, 16);
-			AES_set_decrypt_key(key, 128, &aes_ctx);
 			AES_cbc_decrypt(cur_file->data, plain, 16, &aes_ctx, iv);
 
 			if (plain[0] & 0x80) {
@@ -341,8 +339,9 @@ __kernel void RarFinal(const __global uint *pw_len, __global rar_out *output)
 
 __kernel void RarCheck(__global rar_out *output, __global rar_file *file)
 {
+	__local aes_local_t lt;
 	uint gid = get_global_id(0);
 
 	/* GPU-side early reject */
-	output[gid].sha[4] = check_rar(file, output[gid].sha, output[gid].iv);
+	output[gid].sha[4] = check_rar(file, output[gid].sha, output[gid].iv, &lt);
 }

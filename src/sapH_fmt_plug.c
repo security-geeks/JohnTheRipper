@@ -275,12 +275,11 @@ static void crypt_all_1(int count) {
 		}
 		memcpy(crypt_key[idx], cp, BINARY_SIZE);
 #else
-		unsigned char _IBuf[64*NBKEYS1+MEM_ALIGN_SIMD], *keys, tmpBuf[20], _OBuf[20*NBKEYS1+MEM_ALIGN_SIMD], *crypt;
+		unsigned char _IBuf[64*NBKEYS1+MEM_ALIGN_SIMD], *keys, tmpBuf[20], _OBuf[20*NBKEYS1+MEM_ALIGN_SIMD];
 		uint32_t j, *crypt32, offs[NBKEYS1], len;
 
 		keys  = (unsigned char*)mem_align(_IBuf, MEM_ALIGN_SIMD);
-		crypt = (unsigned char*)mem_align(_OBuf, MEM_ALIGN_SIMD);
-		crypt32 = (uint32_t*)crypt;
+		crypt32 = (uint32_t*)mem_align(_OBuf, MEM_ALIGN_SIMD);
 		memset(keys, 0, 64*NBKEYS1);
 
 		for (i = 0; i < NBKEYS1; ++i) {
@@ -309,7 +308,6 @@ static void crypt_all_1(int count) {
 				uint32_t *pcrypt = &crypt32[ ((k/SIMD_COEF_32)*(SIMD_COEF_32*5)) + (k&(SIMD_COEF_32-1))];
 				uint32_t *Icp32 = (uint32_t *)(&keys[(k<<6)+offs[k]]);
 				for (j = 0; j < 5; ++j) {
-					// likely location for BE porting
 #if ARCH_ALLOWS_UNALIGNED
   #if ARCH_LITTLE_ENDIAN
 					Icp32[j] = JOHNSWAP(*pcrypt);
@@ -319,9 +317,9 @@ static void crypt_all_1(int count) {
 #else
   #if ARCH_LITTLE_ENDIAN
 					uint32_t tmp = JOHNSWAP(*pcrypt);
-					memcpy(&Icp32[j], &tmp, 4);
+					memcpy((char *)&Icp32[j], &tmp, 4);
   #else
-					memcpy(&Icp32[j], pcrypt, 4);
+					memcpy((char *)&Icp32[j], pcrypt, 4);
   #endif
 #endif
 					pcrypt += SIMD_COEF_32;
@@ -370,12 +368,11 @@ static void crypt_all_256(int count) {
 		}
 		memcpy(crypt_key[idx], cp, BINARY_SIZE);
 #else
-		unsigned char _IBuf[64*NBKEYS256+MEM_ALIGN_SIMD], *keys, tmpBuf[32], _OBuf[32*NBKEYS256+MEM_ALIGN_SIMD], *crypt;
+		unsigned char _IBuf[64*NBKEYS256+MEM_ALIGN_SIMD], *keys, tmpBuf[32], _OBuf[32*NBKEYS256+MEM_ALIGN_SIMD];
 		uint32_t j, *crypt32, offs[NBKEYS256], len;
 
 		keys  = (unsigned char*)mem_align(_IBuf, MEM_ALIGN_SIMD);
-		crypt = (unsigned char*)mem_align(_OBuf, MEM_ALIGN_SIMD);
-		crypt32 = (uint32_t*)crypt;
+		crypt32 = (uint32_t*)mem_align(_OBuf, MEM_ALIGN_SIMD);
 		memset(keys, 0, 64*NBKEYS256);
 
 		for (i = 0; i < NBKEYS256; ++i) {
@@ -413,9 +410,9 @@ static void crypt_all_256(int count) {
 #else
   #if ARCH_LITTLE_ENDIAN
 					uint32_t tmp = JOHNSWAP(*pcrypt);
-					memcpy(&Icp32[j], &tmp, 4);
+					memcpy((char *)&Icp32[j], &tmp, 4);
   #else
-					memcpy(&Icp32[j], pcrypt, 4);
+					memcpy((char *)&Icp32[j], pcrypt, 4);
   #endif
 #endif
 					pcrypt += SIMD_COEF_32;
@@ -464,13 +461,12 @@ static void crypt_all_384(int count) {
 		}
 		memcpy(crypt_key[idx], cp, BINARY_SIZE);
 #else
-		unsigned char _IBuf[128*NBKEYS512+MEM_ALIGN_SIMD], *keys, tmpBuf[64], _OBuf[64*NBKEYS512+MEM_ALIGN_SIMD], *crypt;
+		unsigned char _IBuf[128*NBKEYS512+MEM_ALIGN_SIMD], *keys, tmpBuf[64], _OBuf[64*NBKEYS512+MEM_ALIGN_SIMD];
 		uint64_t j, *crypt64, offs[NBKEYS512];
 		uint32_t len;
 
 		keys  = (unsigned char*)mem_align(_IBuf, MEM_ALIGN_SIMD);
-		crypt = (unsigned char*)mem_align(_OBuf, MEM_ALIGN_SIMD);
-		crypt64 = (uint64_t*)crypt;
+		crypt64 = (uint64_t*)mem_align(_OBuf, MEM_ALIGN_SIMD);
 		memset(keys, 0, 128*NBKEYS512);
 
 		for (i = 0; i < NBKEYS512; ++i) {
@@ -508,9 +504,9 @@ static void crypt_all_384(int count) {
 #else
   #if ARCH_LITTLE_ENDIAN
 					uint64_t tmp = JOHNSWAP64(*pcrypt);
-					memcpy(&Icp64[j], &tmp, 8);
+					memcpy((char *)&Icp64[j], &tmp, 8);
   #else
-					memcpy(&Icp64[j], pcrypt, 8);
+					memcpy((char *)&Icp64[j], pcrypt, 8);
   #endif
 #endif
 					pcrypt += SIMD_COEF_64;
@@ -558,13 +554,12 @@ static void crypt_all_512(int count) {
 		}
 		memcpy(crypt_key[idx], cp, BINARY_SIZE);
 #else
-		unsigned char _IBuf[128*NBKEYS512+MEM_ALIGN_SIMD], *keys, tmpBuf[64], _OBuf[64*NBKEYS512+MEM_ALIGN_SIMD], *crypt;
+		unsigned char _IBuf[128*NBKEYS512+MEM_ALIGN_SIMD], *keys, tmpBuf[64], _OBuf[64*NBKEYS512+MEM_ALIGN_SIMD];
 		uint64_t j, *crypt64, offs[NBKEYS512];
 		uint32_t len;
 
 		keys  = (unsigned char*)mem_align(_IBuf, MEM_ALIGN_SIMD);
-		crypt = (unsigned char*)mem_align(_OBuf, MEM_ALIGN_SIMD);
-		crypt64 = (uint64_t*)crypt;
+		crypt64 = (uint64_t*)mem_align(_OBuf, MEM_ALIGN_SIMD);
 		memset(keys, 0, 128*NBKEYS512);
 
 		for (i = 0; i < NBKEYS512; ++i) {
@@ -602,9 +597,9 @@ static void crypt_all_512(int count) {
 #else
   #if ARCH_LITTLE_ENDIAN
 					uint64_t tmp = JOHNSWAP64(*pcrypt);
-					memcpy(&Icp64[j], &tmp, 8);
+					memcpy((char *)&Icp64[j], &tmp, 8);
   #else
-					memcpy(&Icp64[j], pcrypt, 8);
+					memcpy((char *)&Icp64[j], pcrypt, 8);
   #endif
 #endif
 					pcrypt += SIMD_COEF_64;
@@ -653,10 +648,10 @@ static void *get_binary(char *ciphertext)
 	char *cp = ciphertext;
 
 	memset(b.cp, 0, sizeof(b.cp));
-	if (!strncasecmp(cp, FORMAT_TAG, FORMAT_TAG_LEN)) { cp += FORMAT_TAG_LEN; }
-	else if (!strncasecmp(cp, FORMAT_TAG256, FORMAT_TAG256_LEN)) { cp += FORMAT_TAG256_LEN; }
-	else if (!strncasecmp(cp, FORMAT_TAG384, FORMAT_TAG384_LEN)) { cp += FORMAT_TAG384_LEN; }
-	else if (!strncasecmp(cp, FORMAT_TAG512, FORMAT_TAG512_LEN)) { cp += FORMAT_TAG512_LEN; }
+	if (!strncmp(cp, FORMAT_TAG, FORMAT_TAG_LEN)) { cp += FORMAT_TAG_LEN; }
+	else if (!strncmp(cp, FORMAT_TAG256, FORMAT_TAG256_LEN)) { cp += FORMAT_TAG256_LEN; }
+	else if (!strncmp(cp, FORMAT_TAG384, FORMAT_TAG384_LEN)) { cp += FORMAT_TAG384_LEN; }
+	else if (!strncmp(cp, FORMAT_TAG512, FORMAT_TAG512_LEN)) { cp += FORMAT_TAG512_LEN; }
 	else { fprintf(stderr, "error, bad signature in sap-H format!\n"); error(); }
 	while (*cp != '}') ++cp;
 	++cp;
@@ -674,10 +669,10 @@ static void *get_salt(char *ciphertext)
 	int total_len, hash_len = 0;
 
 	memset(&s, 0, sizeof(s));
-	if (!strncasecmp(cp, FORMAT_TAG, FORMAT_TAG_LEN)) { s.type = 1; cp += FORMAT_TAG_LEN; hash_len = SHA1_BINARY_SIZE; }
-	else if (!strncasecmp(cp, FORMAT_TAG256, FORMAT_TAG256_LEN)) { s.type = 2; cp += FORMAT_TAG256_LEN; hash_len = SHA256_BINARY_SIZE; }
-	else if (!strncasecmp(cp, FORMAT_TAG384, FORMAT_TAG384_LEN)) { s.type = 3; cp += FORMAT_TAG384_LEN; hash_len = SHA384_BINARY_SIZE; }
-	else if (!strncasecmp(cp, FORMAT_TAG512, FORMAT_TAG512_LEN)) { s.type = 4; cp += FORMAT_TAG512_LEN; hash_len = SHA512_BINARY_SIZE; }
+	if (!strncmp(cp, FORMAT_TAG, FORMAT_TAG_LEN)) { s.type = 1; cp += FORMAT_TAG_LEN; hash_len = SHA1_BINARY_SIZE; }
+	else if (!strncmp(cp, FORMAT_TAG256, FORMAT_TAG256_LEN)) { s.type = 2; cp += FORMAT_TAG256_LEN; hash_len = SHA256_BINARY_SIZE; }
+	else if (!strncmp(cp, FORMAT_TAG384, FORMAT_TAG384_LEN)) { s.type = 3; cp += FORMAT_TAG384_LEN; hash_len = SHA384_BINARY_SIZE; }
+	else if (!strncmp(cp, FORMAT_TAG512, FORMAT_TAG512_LEN)) { s.type = 4; cp += FORMAT_TAG512_LEN; hash_len = SHA512_BINARY_SIZE; }
 	else { fprintf(stderr, "error, bad signature in sap-H format!\n"); error(); }
 	sscanf(cp, "%u", &s.iter);
 	while (*cp != '}') ++cp;

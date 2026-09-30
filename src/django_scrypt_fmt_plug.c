@@ -37,6 +37,8 @@ john_register_one(&fmt_django_scrypt);
 #define TAG_LENGTH		(sizeof(FORMAT_TAG)-1)
 #if !defined(JOHN_NO_SIMD) && defined(__XOP__)
 #define ALGORITHM_NAME		"Salsa20/8 128/128 XOP"
+#elif !defined(JOHN_NO_SIMD) && defined(__AVX512VL__)
+#define ALGORITHM_NAME		"Salsa20/8 128/128 AVX512VL"
 #elif !defined(JOHN_NO_SIMD) && defined(__AVX__)
 #define ALGORITHM_NAME		"Salsa20/8 128/128 AVX"
 #elif !defined(JOHN_NO_SIMD) && defined(__SSE2__)
@@ -46,7 +48,7 @@ john_register_one(&fmt_django_scrypt);
 #endif
 #define BENCHMARK_COMMENT	""
 #define BENCHMARK_LENGTH	0x107
-#define PLAINTEXT_LENGTH	125
+#define PLAINTEXT_LENGTH	MAX_PLAINTEXT_LENGTH
 #define BINARY_SIZE		64
 #define SALT_SIZE		sizeof(struct custom_salt)
 #define BINARY_ALIGN		4

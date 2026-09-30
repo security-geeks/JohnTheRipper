@@ -10,7 +10,7 @@
 
 #if HAVE_OPENCL
 
-#define FMT_STRUCT fmt_opencl_tc
+#define FMT_STRUCT fmt_opencl_truecrypt
 #if FMT_EXTERNS_H
 extern struct fmt_main FMT_STRUCT;
 #elif FMT_REGISTERS_H
@@ -194,7 +194,7 @@ static void reset(struct db_main *db)
 		         (int)sizeof(inbuffer->v),
 		         (int)sizeof(currentsalt.salt),
 		         OUTLEN);
-		opencl_init("$JOHN/opencl/pbkdf2_ripemd160_kernel.cl",
+		opencl_init("$JOHN/opencl/truecrypt_kernel.cl",
 		            gpu_id, build_opts);
 
 		crypt_kernel = clCreateKernel(program[gpu_id], "tc_ripemd_aesxts",

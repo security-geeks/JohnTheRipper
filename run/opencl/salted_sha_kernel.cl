@@ -21,7 +21,7 @@
 #define SL3CONV
 #endif
 
-inline void cmp_final(uint gid,
+INLINE void cmp_final(uint gid,
 		uint iter,
 		uint *hash,
 		__global uint *offset_table,
@@ -70,7 +70,7 @@ inline void cmp_final(uint gid,
 	}
 }
 
-inline void cmp(uint gid,
+INLINE void cmp(uint gid,
 		uint iter,
 		uint *hash,
 #if USE_LOCAL_BITMAPS
@@ -144,11 +144,7 @@ void sha1(__global uint *keys,
 #else
           __global
 #endif
-#if !defined(__OS_X__) && USE_CONST_CACHE && gpu_amd(DEVICE_INFO)
-          uint *int_keys __attribute__((max_constant_size (NUM_INT_KEYS * 4))),
-#else
           uint *int_keys,
-#endif
           __constant uchar *salt,
           __global uint *bitmaps,
           __global uint *offset_table,

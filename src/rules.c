@@ -1,8 +1,8 @@
 /*
  * This file is part of John the Ripper password cracker,
  * Copyright (c) 1996-99,2003,2005,2009,2010,2015,2016 by Solar Designer
- *
- * With heavy changes in Jumbo, by JimF and magnum
+ * Copyright (c) 2009-2025, magnum
+ * Copyright (c) 2009-2018, JimF
  */
 
 #include <stdio.h>
@@ -23,6 +23,13 @@
 #include "unicode.h"
 #include "mask.h"
 #include "encoding_data.h"
+
+/*
+ * Buffer size for words while applying rules, should be at least as large
+ * as PLAINTEXT_BUFFER_SIZE, but not large enough that fitting strings could
+ * reach or exceed INFINITE_LENGTH or INVALID_LENGTH defined further below.
+ */
+#define RULE_WORD_SIZE			PLAINTEXT_BUFFER_SIZE
 
 /*
  * Error codes.
@@ -99,7 +106,7 @@ int rules_mute, stack_rules_mute;
 static int fmt_case;
 
 static struct {
-	unsigned char vars[0x100];
+	int vars[0x100]; /* may be negative */
 /*
  * pass == -2	initial syntax checking of rules
  * pass == -1	optimization of rules (no-ops are removed)
@@ -107,12 +114,10 @@ static struct {
  */
 	int pass;
 /*
- * Some rule commands may temporarily double the length, and we skip a few
- * machine words to avoid cache bank conflicts when copying data between the
- * buffers.  We need three buffers because some rule commands require separate
- * input and output buffers and we also need a buffer either for leaving the
- * previous mangled word intact for a subsequent comparison (in wordlist mode)
- * or for switching between two input words (in "single crack" mode).
+ * Some rule commands may temporarily double the length.
+ * We need three buffers because some rule commands require separate input and
+ * output buffers and we also need a buffer for switching between two input
+ * words in "single crack" mode.
  * rules_apply() tries to minimize data copying, and thus it may return a
  * pointer to any of the three buffers.
  *
@@ -187,8 +192,8 @@ static char *conv_source = CONV_SOURCE;
 static char *conv_shift, *conv_invert, *conv_vowels, *conv_right, *conv_left;
 static char *conv_tolower, *conv_toupper;
 
-#define INVALID_LENGTH			0x81
-#define INFINITE_LENGTH			0xFF
+#define INFINITE_LENGTH			(MAX_PLAINTEXT_LENGTH * 2)
+#define INVALID_LENGTH			(INFINITE_LENGTH + 1)
 
 #define RULE				(*rule++)
 #define LAST				(*(rule - 1))
@@ -522,7 +527,7 @@ static void rules_init_length(int max_length)
 {
 	int c;
 
-	memset(rules_vars, INVALID_LENGTH, sizeof(rules_vars));
+	for (c = 0; c < 0x100; c++) rules_vars[c] = INVALID_LENGTH;
 
 	for (c = '0'; c <= '9'; c++) rules_vars[c] = c - '0';
 	for (c = 'A'; c <= 'Z'; c++) rules_vars[c] = c - ('A' - 10);
@@ -576,7 +581,7 @@ int rules_init_stack(char *ruleset, rule_stack *stack_ctx,
 		do {
 			rule_number++;
 
-			if ((rule = rules_reject(prerule, -1, NULL, db))) {
+			if ((rule = rules_reject(prerule, -1, db))) {
 				list_add(stack_ctx->stack_rule, rule);
 				active_rules++;
 
@@ -611,7 +616,7 @@ int rules_init_stack(char *ruleset, rule_stack *stack_ctx,
 			log_event("- No stacked rules");
 	}
 
-	rules_stacked_after = rule_count && (options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK));
+	rules_stacked_after = rule_count && (options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK | FLG_BATCH_CHK));
 
 	return rule_count;
 }
@@ -639,10 +644,10 @@ void rules_init(struct db_main *db, int max_length)
 	}
 	rules_init_length(max_length);
 
-	rules_stacked_after = (options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK)) && (options.flags & FLG_RULES_STACK_CHK);
+	rules_stacked_after = (options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK | FLG_BATCH_CHK)) && (options.flags & FLG_RULES_STACK_CHK);
 }
 
-char *rules_reject(char *rule, int split, char *last, struct db_main *db)
+char *rules_reject(char *rule, int split, struct db_main *db)
 {
 	static char out_rule[RULE_BUFFER_SIZE];
 
@@ -748,7 +753,7 @@ char *rules_reject(char *rule, int split, char *last, struct db_main *db)
 accept:
 	rules_pass--;
 	strnzcpy(out_rule, rule - 1, sizeof(out_rule));
-	rules_apply(safe_null_string, out_rule, split, last);
+	rules_apply(safe_null_string, out_rule, split);
 	rules_pass++;
 
 	return out_rule;
@@ -756,7 +761,7 @@ accept:
 
 #define STACK_MAXLEN (rules_stacked_after ? RULE_WORD_SIZE : rules_max_length)
 
-char *rules_apply(char *word_in, char *rule, int split, char *last)
+char *rules_apply(char *word_in, char *rule, int split)
 {
 	union {
 		char aligned[PLAINTEXT_BUFFER_SIZE];
@@ -771,13 +776,11 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 	if (!(options.flags & FLG_SINGLE_CHK) && options.internal_cp != UTF_8 &&
 	    options.internal_cp != ENC_RAW && options.target_enc == UTF_8)
 		memory = word = utf8_to_cp_r(word_in, cpword,
-		                             PLAINTEXT_BUFFER_SIZE - 1);
+		                             MAX_PLAINTEXT_LENGTH);
 	else
 		memory = word = word_in;
 
 	in = buffer[0][STAGE];
-	if (in == last)
-		in = buffer[2][STAGE];
 
 	length = 0;
 	while (length < RULE_WORD_SIZE) {
@@ -797,15 +800,13 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		REJECT
 
 	alt = buffer[1][STAGE];
-	if (alt == last)
-		alt = buffer[2][STAGE];
 
 /*
  * This assumes that RULE_WORD_SIZE is small enough that length can't reach or
  * exceed INVALID_LENGTH.
  */
 	rules_vars['l'] = length;
-	rules_vars['m'] = (unsigned char)length - 1;
+	rules_vars['m'] = length - 1; /* may be -1 if hc_logic or rules_pass */
 
 	if (rules_stacked_after != length_initiated_as) {
 		if (rules_stacked_after) {
@@ -847,7 +848,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '<':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (length >= pos) REJECT
 			}
@@ -855,7 +856,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '>':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (length <= pos) REJECT
 			}
@@ -911,9 +912,9 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		case 'p':
 			if (hc_logic || (*rule >= '1' && *rule <= '9')) {
 				/* HC rule: duplicate word N times */
-				unsigned char x, y;
+				unsigned int x, y;
 				POSITION(x)
-				if (x * length > RULE_WORD_SIZE - 1)
+				if (x > RULE_WORD_SIZE - 1 || x * length > RULE_WORD_SIZE - 1)
 					x = (RULE_WORD_SIZE - 1) / length;
 				y = x;
 				in[length*(x + 1)] = 0;
@@ -998,7 +999,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		case 'x':
 			if (hc_logic) {
 				/* Slightly different edge logic for HC */
-				int pos, pos2;
+				unsigned int pos, pos2;
 				POSITION(pos)
 				POSITION(pos2)
 				if (pos < length && pos+pos2 <= length) {
@@ -1012,7 +1013,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 				break;
 			} else
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (pos < length) {
 					char *out;
@@ -1030,7 +1031,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'i':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (pos < length) {
 					char *p = in + pos;
@@ -1056,7 +1057,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'o':
 			{
-				int pos;
+				unsigned int pos;
 				char value;
 				POSITION(pos)
 				VALUE(value);
@@ -1095,7 +1096,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '=':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (pos >= length) {
 					SKIP_CLASS
@@ -1168,7 +1169,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '\'':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (pos < length)
 					in[length = pos] = 0;
@@ -1177,7 +1178,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '%':
 			{
-				int count = 0, required, pos;
+				unsigned int count = 0, required, pos;
 				POSITION(required)
 				CLASS_export_pos(0,
 				    if (++count >= required) break, {})
@@ -1189,13 +1190,13 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 /* Rules added in John */
 		case 'A': /* append/insert/prepend string */
 			{
-				int pos;
+				unsigned int pos;
 				char term;
 				POSITION(pos)
 				VALUE(term)
 				if (pos >= length) { /* append */
 					char *start, *end, *p;
-					start = p = &in[pos = length];
+					start = p = &in[length];
 					end = &in[RULE_WORD_SIZE - 1];
 					do {
 						char c = RULE;
@@ -1237,15 +1238,16 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'T':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
-				in[pos] = conv_invert[ARCH_INDEX(in[pos])];
+				if (pos < length)
+					in[pos] = conv_invert[ARCH_INDEX(in[pos])];
 			}
 			break;
 
 		case 'D':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (pos < length) {
 					memmove(&in[pos], &in[pos + 1],
@@ -1311,7 +1313,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		case 'R':
 			if (hc_logic || (*rule >= '0' && *rule <= '9')) {
 				/* HC rule: bit-shift character right */
-				unsigned char n;
+				unsigned int n;
 				unsigned char val;
 				POSITION(n)
 				if (n < length) {
@@ -1327,7 +1329,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		case 'L':
 			if (hc_logic || (*rule >= '0' && *rule <= '9')) {
 				/* HC rule: bit-shift character left */
-				unsigned char n;
+				unsigned int n;
 				unsigned char val;
 				POSITION(n)
 				if (n < length) {
@@ -1381,7 +1383,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'M':
 			memcpy(memory = memory_buffer, in, length + 1);
-			rules_vars['m'] = (unsigned char)length - 1;
+			rules_vars['m'] = length - 1;
 			break;
 
 		case 'Q':
@@ -1394,14 +1396,16 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'X': /* append/insert/prepend substring from memory */
 			{
-				int mpos, count, ipos, mleft;
+				unsigned int mpos, count, ipos, mleft;
 				char *inp;
 				const char *mp;
 				POSITION(mpos)
 				POSITION(count)
 				POSITION(ipos)
-				mleft = (int)(unsigned char)
-				    (rules_vars['m'] + 1) - mpos;
+				mleft = rules_vars['m'] + 1;
+				if (mleft < mpos)
+					break;
+				mleft -= mpos;
 				if (count > mleft)
 					count = mleft;
 				if (count <= 0)
@@ -1422,14 +1426,14 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		case 'v': /* assign value to numeric variable */
 			{
 				char var;
-				unsigned char a, s;
+				int a, s; /* may be negative */
 				VALUE(var)
 				if (var < 'a' || var > 'k')
 					goto out_ERROR_POSITION;
 				rules_vars['l'] = length;
 				POSITION(a)
 				POSITION(s)
-				rules_vars[ARCH_INDEX(var)] = a - s;
+				rules_vars[ARCH_INDEX(var)] = a - s; /* may be negative */
 			}
 			break;
 
@@ -1475,7 +1479,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 		case '+':
 			if (hc_logic || !which) {
 				/* HC rule: increment character */
-				unsigned char x;
+				unsigned int x;
 				POSITION(x)
 				if (x < length)
 					++in[x];
@@ -1507,7 +1511,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 /* Rules added in Jumbo */
 		case 'a':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (!rules_stacked_after) {
 					if (length + pos > rules_max_length)
@@ -1520,7 +1524,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'b':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (!rules_stacked_after) {
 					if (length - pos > rules_max_length)
@@ -1533,9 +1537,10 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'W':
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
-				in[pos] = conv_shift[ARCH_INDEX(in[pos])];
+				if (pos < length)
+					in[pos] = conv_shift[ARCH_INDEX(in[pos])];
 			}
 			break;
 
@@ -1547,7 +1552,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 /* Hashcat rules added to Jumbo */
 		case '_': /* reject unless length equals to N */
 			{
-				int pos;
+				unsigned int pos;
 				POSITION(pos)
 				if (length != pos) REJECT
 			}
@@ -1555,7 +1560,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '-': /* decrement character */
 			{
-				unsigned char x;
+				unsigned int x;
 				POSITION(x)
 				if (x < length)
 					--in[x];
@@ -1574,7 +1579,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '*': /* swap any two characters */
 			{
-				unsigned char x, y;
+				unsigned int x, y;
 				POSITION(x)
 				POSITION(y)
 				if (length > x && length > y)
@@ -1584,9 +1589,10 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'z': /* duplicate first char N times */
 			{
-				unsigned char x;
-				int y;
+				unsigned int x, y;
 				POSITION(x)
+				if (x > MAX_PLAINTEXT_LENGTH)
+					break;
 				y = length;
 				while (y) {
 					in[y + x] = in[y];
@@ -1601,10 +1607,12 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 			}
 			break;
 
-		case 'Z': /* duplicate char char N times */
+		case 'Z': /* duplicate last char N times */
 			{
-				unsigned char x;
+				unsigned int x;
 				POSITION(x)
+				if (x > MAX_PLAINTEXT_LENGTH)
+					break;
 				while (x) {
 					in[length] = in[length - 1];
 					++length;
@@ -1628,7 +1636,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case '.': /* replace character with next */
 			{
-				unsigned char n;
+				unsigned int n;
 				POSITION(n)
 				if (n < length - 1 && length > 1)
 					in[n] = in[n + 1];
@@ -1637,7 +1645,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case ',': /* replace character with prior */
 			{
-				unsigned char n;
+				unsigned int n;
 				POSITION(n)
 				if (n >= 1 && length > 1 && n < length)
 					in[n] = in[n - 1];
@@ -1646,7 +1654,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'y': /* duplicate first n characters */
 			{
-				unsigned char n;
+				unsigned int n;
 				POSITION(n)
 				if (n <= length) {
 					memmove(&in[n], in, length);
@@ -1658,7 +1666,7 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'Y': /* duplicate last n characters */
 			{
-				unsigned char n;
+				unsigned int n;
 				POSITION(n)
 				if (n <= length) {
 					memmove(&in[length], &in[length - n], n);
@@ -1689,13 +1697,13 @@ char *rules_apply(char *word_in, char *rule, int split, char *last)
 
 		case 'O': /*  Omit */
 			{
-				int pos, pos2;
+				unsigned int pos, pos2;
 				POSITION(pos)
 				POSITION(pos2)
-				if (pos < length && pos+pos2 <= length) {
+				if (pos < length && pos2 <= length && pos + pos2 <= length) {
 					char *out;
 					GET_OUT
-					strncpy(out, in, pos);
+					memcpy(out, in, pos);
 					in += pos + pos2;
 					strnzcpy(out + pos, in, length - (pos + pos2) + 1);
 					length -= pos2;
@@ -1771,22 +1779,6 @@ out_OK:
 		length = strlen(in);
 	}
 
-	if (last) {
-		if (length > STACK_MAXLEN)
-			length = STACK_MAXLEN;
-		if (length >= ARCH_SIZE - 1) {
-			if (*(ARCH_WORD *)in != *(ARCH_WORD *)last)
-				return in;
-			if (strcmp(&in[ARCH_SIZE - 1], &last[ARCH_SIZE - 1]))
-				return in;
-			return NULL;
-		}
-		if (last[length])
-			return in;
-		if (memcmp(in, last, length))
-			return in;
-		return NULL;
-	}
 	return in;
 
 out_which:
@@ -1826,9 +1818,10 @@ out_ERROR_UNALLOWED:
 }
 
 /*
- * Advance stacked rules. We iterate main rules first and only then we
- * advance the stacked rules (and rewind the main rules). Repeat until
- * main rules are done with the last stacked rule.
+ * Advance stacked rules. We run all words through each main rule,
+ * rewinding the wordlist inbetween them. Each result from that is run
+ * through each stacked rule, rewinding the latter before advancing to
+ * next word (or next main rule).
  */
 int rules_advance_stack(rule_stack *ctx, int quiet)
 {
@@ -1838,7 +1831,7 @@ int rules_advance_stack(rule_stack *ctx, int quiet)
 		rules_stacked_number++;
 		if (!quiet)
 			log_event("+ Stacked Rule #%u: '%.100s' accepted",
-			          rules_stacked_number, ctx->rule->data);
+			          rules_stacked_number + 1, ctx->rule->data);
 	}
 
 	return !ctx->done;
@@ -1849,11 +1842,6 @@ int rules_advance_stack(rule_stack *ctx, int quiet)
  */
 char *rules_process_stack(char *key, rule_stack *ctx)
 {
-	static union {
-		char buf[LINE_BUFFER_SIZE];
-		ARCH_WORD dummy;
-	} aligned;
-	static char *last = aligned.buf;
 	char *word;
 
 	if (!ctx->rule) {
@@ -1865,10 +1853,9 @@ char *rules_process_stack(char *key, rule_stack *ctx)
 
 	rules_stacked_after = 0;
 
-	if ((word = rules_apply(key, ctx->rule->data, -1, last)))
-		last = word;
+	word = rules_apply(key, ctx->rule->data, -1);
 
-	rules_stacked_after = !!(options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK));
+	rules_stacked_after = !!(options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK | FLG_BATCH_CHK));
 
 	return word;
 }
@@ -1878,44 +1865,38 @@ char *rules_process_stack(char *key, rule_stack *ctx)
  */
 char *rules_process_stack_all(char *key, rule_stack *ctx)
 {
-	static union {
-		char buf[LINE_BUFFER_SIZE];
-		ARCH_WORD dummy;
-	} aligned;
-	static char *last = aligned.buf;
 	char *word;
 
 	if (!ctx->rule) {
 		ctx->rule = ctx->stack_rule->head;
 		rules_stacked_number = 0;
-		if (!stack_rules_mute)
-			log_event("+ Stacked Rule #%u: '%.100s' accepted",
-			          rules_stacked_number + 1, ctx->rule->data);
+	} else {
+		if ((ctx->rule = ctx->rule->next)) {
+			rules_stacked_number++;
+		}
 	}
 
 	rules_stacked_after = 0;
 
 	while (ctx->rule) {
-		if ((word = rules_apply(key, ctx->rule->data, -1, last))) {
-			last = word;
+		if (!stack_rules_mute)
+			log_event("+ Stacked Rule #%u: '%.100s' accepted",
+			          rules_stacked_number + 1, ctx->rule->data);
+		if ((word = rules_apply(key, ctx->rule->data, -1)))
 			return word;
-		} else
 		if ((ctx->rule = ctx->rule->next)) {
 			rules_stacked_number++;
-			if (!stack_rules_mute)
-			    log_event("+ Stacked Rule #%u: '%.100s' accepted",
-			          rules_stacked_number + 1, ctx->rule->data);
 		}
 	}
 
-	rules_stacked_after = !!(options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK));
+	rules_stacked_after = !!(options.flags & (FLG_RULES_CHK | FLG_SINGLE_CHK | FLG_BATCH_CHK));
 
-	if (!stack_rules_mute && options.verbosity <= VERB_DEFAULT) {
+	if (!stack_rules_mute && options.verbosity < VERB_DEBUG) {
 		stack_rules_mute = 1;
 		if (john_main_process) {
 			log_event(
 "- Some rule logging suppressed. Re-enable with --verbosity=%d or greater",
-			          VERB_LEGACY);
+			          VERB_DEBUG);
 		}
 	}
 
@@ -1943,7 +1924,7 @@ static int rules_check(struct rpp_context *start, int split)
 
 	rules_pass = -1; /* rules_reject() will turn this into -2 */
 	while ((rule = rpp_next(&ctx))) {
-		rules_reject(rule, split, NULL, NULL);
+		rules_reject(rule, split, NULL);
 		if (rules_errno) break;
 
 		if (ctx.input) rules_line = ctx.input->number;
@@ -1981,7 +1962,7 @@ static void rules_load_normalized_list(struct cfg_line *pLine)
 			/*
 			 * this will 'reduce' the rule by stripping no-op's.
 			 */
-			char *rule = rules_reject(pLine->data, -1, NULL, NULL);
+			char *rule = rules_reject(pLine->data, -1, NULL);
 			if (rule) {
 				rules_normalize_add_line(rule, pLine->id);
 				++rules_tmp_dup_removal_cnt;
@@ -2152,12 +2133,12 @@ int rules_count(struct rpp_context *start, int split)
 	}
 
 	if (((options.flags & FLG_PIPE_CHK) && count1 >= RULES_MUTE_THR) &&
-	    options.verbosity < VERB_LEGACY) {
+	    options.verbosity < VERB_DEBUG) {
 		rules_mute = 1;
 		if (john_main_process) {
 			log_event(
 "- Some rule logging suppressed. Re-enable with --verbosity=%d or greater",
-			          VERB_LEGACY);
+			          VERB_DEBUG);
 		}
 	}
 	return count1;

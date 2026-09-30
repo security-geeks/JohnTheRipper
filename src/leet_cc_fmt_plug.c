@@ -68,7 +68,7 @@ john_register_one(&fmt_leet);
 #define PLAINTEXT_LENGTH        (111-32)
 #define MAX_SALT_LEN            32
 #else
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #define MAX_SALT_LEN            256
 #endif
 
@@ -157,7 +157,7 @@ static char *prepare(char *split_fields[10], struct fmt_main *self)
 {
 	char* cp;
 
-	if (!split_fields[0])
+	if (!split_fields[0][0] || !strcmp(split_fields[0], "?"))
 		return split_fields[1];
 	if (strnlen(split_fields[1], BINARY_SIZE * 2 + 1) != BINARY_SIZE * 2)
 		return split_fields[1];

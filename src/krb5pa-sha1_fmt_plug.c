@@ -64,19 +64,19 @@ john_register_one(&fmt_krb5pa);
 #include "krb5_common.h"
 
 #define FORMAT_LABEL       "krb5pa-sha1"
-#define FORMAT_NAME        "Kerberos 5 AS-REQ Pre-Auth etype 17/18" /* aes-cts-hmac-sha1-96 */
+#define FORMAT_NAME        "Kerberos 5 AS-REQ Pre-Auth etype 17/18"
 #define FORMAT_TAG         "$krb5pa$"
 #define FORMAT_TAG_LEN     (sizeof(FORMAT_TAG)-1)
 #ifdef SIMD_COEF_32
-#define ALGORITHM_NAME     "PBKDF2-SHA1 " SHA1_ALGORITHM_NAME
+#define ALGORITHM_NAME     "PBKDF2-SHA1 (AES-CTS-HMAC-SHA1-96)" SHA1_ALGORITHM_NAME
 #else
-#define ALGORITHM_NAME     "PBKDF2-SHA1 32/" ARCH_BITS_STR
+#define ALGORITHM_NAME     "PBKDF2-SHA1 (AES-CTS-HMAC-SHA1-96) 32/" ARCH_BITS_STR
 #endif
 #define BENCHMARK_COMMENT  ""
 #define BENCHMARK_LENGTH   0x507
 #define BINARY_SIZE        12
 #define BINARY_ALIGN       4
-#define PLAINTEXT_LENGTH   125
+#define PLAINTEXT_LENGTH   MAX_PLAINTEXT_LENGTH
 #define SALT_SIZE          sizeof(struct custom_salt)
 #define SALT_ALIGN         4
 #ifdef SIMD_COEF_32
@@ -287,7 +287,7 @@ static char *split(char *ciphertext, int index, struct fmt_main *pFmt)
 	snprintf(out, sizeof(out), "%s%s$%s$%s$%s$%s", FORMAT_TAG, e, u, r, s, tc);
 
 	data = out + strlen(out) - 2 * (CHECKSUM_SIZE + TIMESTAMP_SIZE) - 1;
-	strlwr(data);
+	enc_strlwr(data);
 
 	return out;
 }

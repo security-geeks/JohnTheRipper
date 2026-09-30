@@ -1,7 +1,7 @@
 /*
  * This software is
  * Copyright (c) 2013 Lukas Odzioba <ukasz at openwall dot net>
- * Copyright (c) 2014-2018 magnum
+ * Copyright (c) 2014-2024 magnum
  * Copyright (c) 2021 Solar Designer
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without
@@ -19,12 +19,16 @@
 #define SHA256_DIGEST_LENGTH 32
 #endif
 
+#ifndef SHA384_DIGEST_LENGTH
+#define SHA384_DIGEST_LENGTH 48
+#endif
+
 #ifndef SHA512_DIGEST_LENGTH
 #define SHA512_DIGEST_LENGTH 64
 #endif
 
 #define SHA256_LUT3 HAVE_LUT3
-#define SHA512_LUT3 HAVE_LUT3_64
+//#define SHA512_LUT3 HAVE_LUT3_64
 
 #if SHA256_LUT3
 #define Ch(x, y, z) lut3(x, y, z, 0xca)
@@ -498,26 +502,35 @@ __constant ulong K[] = {
 #define sigma1_64(x) (ror64(x, 19) ^ ror64(x, 61) ^ (x >> 6))
 #endif
 
-#define SHA2_INIT_A	0x6a09e667f3bcc908UL
-#define SHA2_INIT_B	0xbb67ae8584caa73bUL
-#define SHA2_INIT_C	0x3c6ef372fe94f82bUL
-#define SHA2_INIT_D	0xa54ff53a5f1d36f1UL
-#define SHA2_INIT_E	0x510e527fade682d1UL
-#define SHA2_INIT_F	0x9b05688c2b3e6c1fUL
-#define SHA2_INIT_G	0x1f83d9abfb41bd6bUL
-#define SHA2_INIT_H	0x5be0cd19137e2179UL
+#define SHA384_INIT_A	0xcbbb9d5dc1059ed8UL
+#define SHA384_INIT_B	0x629a292a367cd507UL
+#define SHA384_INIT_C	0x9159015a3070dd17UL
+#define SHA384_INIT_D	0x152fecd8f70e5939UL
+#define SHA384_INIT_E	0x67332667ffc00b31UL
+#define SHA384_INIT_F	0x8eb44a8768581511UL
+#define SHA384_INIT_G	0xdb0c2e0d64f98fa7UL
+#define SHA384_INIT_H	0x47b5481dbefa4fa4UL
+
+#define SHA512_INIT_A	0x6a09e667f3bcc908UL
+#define SHA512_INIT_B	0xbb67ae8584caa73bUL
+#define SHA512_INIT_C	0x3c6ef372fe94f82bUL
+#define SHA512_INIT_D	0xa54ff53a5f1d36f1UL
+#define SHA512_INIT_E	0x510e527fade682d1UL
+#define SHA512_INIT_F	0x9b05688c2b3e6c1fUL
+#define SHA512_INIT_G	0x1f83d9abfb41bd6bUL
+#define SHA512_INIT_H	0x5be0cd19137e2179UL
 
 #define ROUND512_A(a, b, c, d, e, f, g, h, ki, wi)	\
-	t = (ki) + (wi) + (h) + Sigma1_64(e) + Ch((e), (f), (g)); \
+	t = mov_b64((ki) + (wi) + (h) + Sigma1_64(e) + Ch((e), (f), (g))); \
 	d += (t); h = (t) + Sigma0_64(a) + Maj((a), (b), (c));
 
 #define ROUND512_Z(a, b, c, d, e, f, g, h, ki)	\
-	t = (ki) + (h) + Sigma1_64(e) + Ch((e), (f), (g)); \
+	t = mov_b64((ki) + (h) + Sigma1_64(e) + Ch((e), (f), (g))); \
 	d += (t); h = (t) + Sigma0_64(a) + Maj((a), (b), (c));
 
 #define ROUND512_B(a, b, c, d, e, f, g, h, ki, wi, wj, wk, wl, wm)	  \
 	wi = sigma1_64(wj) + sigma0_64(wk) + wl + wm; \
-	t = (ki) + (wi) + (h) + Sigma1_64(e) + Ch((e), (f), (g)); \
+	t = mov_b64((ki) + (wi) + (h) + Sigma1_64(e) + Ch((e), (f), (g))); \
 	d += (t); h = (t) + Sigma0_64(a) + Maj((a), (b), (c));
 
 #define SHA512_16to31(A,B,C,D,E,F,G,H,W) \
@@ -674,43 +687,55 @@ __constant ulong K[] = {
 #else
 
 /* Raw'n'lean single-block SHA-512, no context[tm] */
-inline void sha512_single_s(ulong *W, ulong *output)
+INLINE void sha512_single_s(ulong *W, ulong *output)
 {
 	ulong A, B, C, D, E, F, G, H, t;
 
-	A = SHA2_INIT_A;
-	B = SHA2_INIT_B;
-	C = SHA2_INIT_C;
-	D = SHA2_INIT_D;
-	E = SHA2_INIT_E;
-	F = SHA2_INIT_F;
-	G = SHA2_INIT_G;
-	H = SHA2_INIT_H;
+	A = mov_b64(SHA512_INIT_A);
+	B = mov_b64(SHA512_INIT_B);
+	C = mov_b64(SHA512_INIT_C);
+	D = mov_b64(SHA512_INIT_D);
+	E = mov_b64(SHA512_INIT_E);
+	F = mov_b64(SHA512_INIT_F);
+	G = mov_b64(SHA512_INIT_G);
+	H = mov_b64(SHA512_INIT_H);
 
 	SHA512(A, B, C, D, E, F, G, H, W)
 
-	output[0] = A + SHA2_INIT_A;
-	output[1] = B + SHA2_INIT_B;
-	output[2] = C + SHA2_INIT_C;
-	output[3] = D + SHA2_INIT_D;
-	output[4] = E + SHA2_INIT_E;
-	output[5] = F + SHA2_INIT_F;
-	output[6] = G + SHA2_INIT_G;
-	output[7] = H + SHA2_INIT_H;
+	output[0] = A + SHA512_INIT_A;
+	output[1] = B + SHA512_INIT_B;
+	output[2] = C + SHA512_INIT_C;
+	output[3] = D + SHA512_INIT_D;
+	output[4] = E + SHA512_INIT_E;
+	output[5] = F + SHA512_INIT_F;
+	output[6] = G + SHA512_INIT_G;
+	output[7] = H + SHA512_INIT_H;
 }
 #endif
+
+#define sha512_init(ctx)	  \
+	do { \
+		(ctx)[0] = SHA512_INIT_A; \
+		(ctx)[1] = SHA512_INIT_B; \
+		(ctx)[2] = SHA512_INIT_C; \
+		(ctx)[3] = SHA512_INIT_D; \
+		(ctx)[4] = SHA512_INIT_E; \
+		(ctx)[5] = SHA512_INIT_F; \
+		(ctx)[6] = SHA512_INIT_G; \
+		(ctx)[7] = SHA512_INIT_H; \
+	} while(0)
 
 #define sha512_block(pad, ctx)\
  {	  \
 	ulong A, B, C, D, E, F, G, H, t; \
-	A = (ctx)[0]; \
-	B = (ctx)[1]; \
-	C = (ctx)[2]; \
-	D = (ctx)[3]; \
-	E = (ctx)[4]; \
-	F = (ctx)[5]; \
-	G = (ctx)[6]; \
-	H = (ctx)[7]; \
+	A = mov_b64((ctx)[0]); \
+	B = mov_b64((ctx)[1]); \
+	C = mov_b64((ctx)[2]); \
+	D = mov_b64((ctx)[3]); \
+	E = mov_b64((ctx)[4]); \
+	F = mov_b64((ctx)[5]); \
+	G = mov_b64((ctx)[6]); \
+	H = mov_b64((ctx)[7]); \
 	SHA512(A, B, C, D, E, F, G, H, pad); \
 	(ctx)[0] += A; \
 	(ctx)[1] += B; \
@@ -723,55 +748,69 @@ inline void sha512_single_s(ulong *W, ulong *output)
 }
 
 /* Raw'n'lean single-block SHA-512, no context[tm] */
-inline void sha512_single(MAYBE_VECTOR_ULONG *W, MAYBE_VECTOR_ULONG *output)
+INLINE void sha512_single(MAYBE_VECTOR_ULONG *W, MAYBE_VECTOR_ULONG *output)
 {
 	MAYBE_VECTOR_ULONG A, B, C, D, E, F, G, H, t;
 
-	A = SHA2_INIT_A;
-	B = SHA2_INIT_B;
-	C = SHA2_INIT_C;
-	D = SHA2_INIT_D;
-	E = SHA2_INIT_E;
-	F = SHA2_INIT_F;
-	G = SHA2_INIT_G;
-	H = SHA2_INIT_H;
+	A = mov_b64(SHA512_INIT_A);
+	B = mov_b64(SHA512_INIT_B);
+	C = mov_b64(SHA512_INIT_C);
+	D = mov_b64(SHA512_INIT_D);
+	E = mov_b64(SHA512_INIT_E);
+	F = mov_b64(SHA512_INIT_F);
+	G = mov_b64(SHA512_INIT_G);
+	H = mov_b64(SHA512_INIT_H);
 
 	SHA512(A, B, C, D, E, F, G, H, W)
 
-	output[0] = A + SHA2_INIT_A;
-	output[1] = B + SHA2_INIT_B;
-	output[2] = C + SHA2_INIT_C;
-	output[3] = D + SHA2_INIT_D;
-	output[4] = E + SHA2_INIT_E;
-	output[5] = F + SHA2_INIT_F;
-	output[6] = G + SHA2_INIT_G;
-	output[7] = H + SHA2_INIT_H;
+	output[0] = A + SHA512_INIT_A;
+	output[1] = B + SHA512_INIT_B;
+	output[2] = C + SHA512_INIT_C;
+	output[3] = D + SHA512_INIT_D;
+	output[4] = E + SHA512_INIT_E;
+	output[5] = F + SHA512_INIT_F;
+	output[6] = G + SHA512_INIT_G;
+	output[7] = H + SHA512_INIT_H;
 }
 
-inline void sha512_single_zeros(MAYBE_VECTOR_ULONG *W,
+INLINE void sha512_single_zeros(MAYBE_VECTOR_ULONG *W,
                                 MAYBE_VECTOR_ULONG *output)
 {
 	MAYBE_VECTOR_ULONG A, B, C, D, E, F, G, H, t;
 
-	A = SHA2_INIT_A;
-	B = SHA2_INIT_B;
-	C = SHA2_INIT_C;
-	D = SHA2_INIT_D;
-	E = SHA2_INIT_E;
-	F = SHA2_INIT_F;
-	G = SHA2_INIT_G;
-	H = SHA2_INIT_H;
+	A = mov_b64(SHA512_INIT_A);
+	B = mov_b64(SHA512_INIT_B);
+	C = mov_b64(SHA512_INIT_C);
+	D = mov_b64(SHA512_INIT_D);
+	E = mov_b64(SHA512_INIT_E);
+	F = mov_b64(SHA512_INIT_F);
+	G = mov_b64(SHA512_INIT_G);
+	H = mov_b64(SHA512_INIT_H);
 
 	SHA512_ZEROS(A, B, C, D, E, F, G, H, W)
 
-	output[0] = A + SHA2_INIT_A;
-	output[1] = B + SHA2_INIT_B;
-	output[2] = C + SHA2_INIT_C;
-	output[3] = D + SHA2_INIT_D;
-	output[4] = E + SHA2_INIT_E;
-	output[5] = F + SHA2_INIT_F;
-	output[6] = G + SHA2_INIT_G;
-	output[7] = H + SHA2_INIT_H;
+	output[0] = A + SHA512_INIT_A;
+	output[1] = B + SHA512_INIT_B;
+	output[2] = C + SHA512_INIT_C;
+	output[3] = D + SHA512_INIT_D;
+	output[4] = E + SHA512_INIT_E;
+	output[5] = F + SHA512_INIT_F;
+	output[6] = G + SHA512_INIT_G;
+	output[7] = H + SHA512_INIT_H;
 }
+
+#define sha384_init(ctx)	  \
+	do { \
+		(ctx)[0] = SHA384_INIT_A; \
+		(ctx)[1] = SHA384_INIT_B; \
+		(ctx)[2] = SHA384_INIT_C; \
+		(ctx)[3] = SHA384_INIT_D; \
+		(ctx)[4] = SHA384_INIT_E; \
+		(ctx)[5] = SHA384_INIT_F; \
+		(ctx)[6] = SHA384_INIT_G; \
+		(ctx)[7] = SHA384_INIT_H; \
+	} while(0)
+
+#define sha384_block(pad, ctx)	sha512_block(pad,ctx)
 
 #endif /* _OPENCL_SHA2_H */

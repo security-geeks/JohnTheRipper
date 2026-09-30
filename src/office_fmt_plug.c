@@ -1,7 +1,7 @@
 /*
  * Office 2007 cracker patch for JtR. This software is
  * Copyright (c) 2012 Dhiru Kholia <dhiru.kholia at gmail.com>.
- * Copyright (c) 2012-2021 magnum
+ * Copyright (c) 2012-2025 magnum
  * and is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted.
@@ -40,7 +40,7 @@ john_register_one(&fmt_office);
 #define ALGORITHM_NAME           "SHA1 " SHA1_ALGORITHM_NAME " / SHA512 " SHA512_ALGORITHM_NAME " AES"
 #define BENCHMARK_COMMENT        ""
 #define BENCHMARK_LENGTH         0x107
-#define PLAINTEXT_LENGTH         125
+#define PLAINTEXT_LENGTH         MAX_PLAINTEXT_LENGTH
 
 #ifdef SIMD_COEF_32
 #define GETPOS_512W(i, index)    ( (index&(SIMD_COEF_64-1))*8 + ((i*8)&(0xffffffff-7))*SIMD_COEF_64 + (uint32_t)index/SIMD_COEF_64*SHA_BUF_SIZ*SIMD_COEF_64*8 )
@@ -104,7 +104,7 @@ static struct fmt_tests office_tests[] = {
 	/* 365-2013-strict-password.docx */
 	{"$office$*2013*100000*256*16*f1c23049d85876e6b20e95ab86a477f1*13303dbd27a38ea86ef11f1b2bc56225*9a69596de0655a6c6a5b2dc4b24d6e713e307fb70af2d6b67b566173e89f941d", "password"},
 
-	/* Max password length data, 125 bytes.  Made with pass_gen.pl */
+	/* Previously max password length data, 125 bytes.  Made with pass_gen.pl */
 	{"$office$*2007*20*128*16*7268323350556e527671367031526263*54344b786a6967615052493837496735*96c9d7cc44e81971aadfe81cce88cb8b00000000", "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345"},
 	{"$office$*2010*100000*128*16*42624931633777446c67354e34686e64*73592fdc2ecb12cd8dcb3ca2cec852bd*82f7315701818a7150ed7a7977717d0b56dcd1bc27e40a23dee6287a6ed55f9b", "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345"},
 	{"$office$*2013*100000*256*16*36537a3373756b587632386d77665362*c5958bd6177be548ce33d99f8e4fd7a7*43baa9dfab09a7e54b9d719dbe5187f1f7b55d7b761361fe1f60c85b044aa125", "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345"},
@@ -150,7 +150,7 @@ static void init(struct fmt_main *self)
 	dynalloc(verifierKeys512);
 
 	if (options.target_enc == UTF_8)
-		self->params.plaintext_length = MIN(125, PLAINTEXT_LENGTH * 3);
+		self->params.plaintext_length = MIN(MAX_PLAINTEXT_LENGTH, PLAINTEXT_LENGTH * 3);
 }
 
 static void done(void)
@@ -802,13 +802,13 @@ struct fmt_main fmt_office = {
 		},
 		fmt_default_source,
 		{
-			fmt_default_binary_hash_0,
-			fmt_default_binary_hash_1,
-			fmt_default_binary_hash_2,
-			fmt_default_binary_hash_3,
-			fmt_default_binary_hash_4,
-			fmt_default_binary_hash_5,
-			fmt_default_binary_hash_6
+			ms_office_binary_hash_0,
+			ms_office_binary_hash_1,
+			ms_office_binary_hash_2,
+			ms_office_binary_hash_3,
+			ms_office_binary_hash_4,
+			ms_office_binary_hash_5,
+			ms_office_binary_hash_6
 		},
 		fmt_default_salt_hash,
 		NULL,

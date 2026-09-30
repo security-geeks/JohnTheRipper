@@ -36,7 +36,7 @@ john_register_one(&fmt_s7);
 #define ALGORITHM_NAME          "HMAC-SHA1 32/" ARCH_BITS_STR
 #define BENCHMARK_COMMENT       ""
 #define BENCHMARK_LENGTH        7
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #define CIPHERTEXT_LENGTH       (1 + 10 + 1 + 1 + 1 + 40 + 1 + 40)
 #define BINARY_SIZE             20
 #define SALT_SIZE               20
@@ -205,7 +205,7 @@ static int crypt_all(int *pcount, struct db_salt *salt)
 			SHA1_Update(&ipad_ctx[index], pad, 20);
 			SHA1_Update(&ipad_ctx[index], "\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36\x36", 44);
 			for (i = 0; i < 20; ++i) {
-				pad[i] = buf[i] ^ 0x5C;
+				pad[i] ^= 0x36 ^ 0x5C;
 			}
 			SHA1_Init(&opad_ctx[index]);
 			SHA1_Update(&opad_ctx[index], pad, 20);

@@ -77,7 +77,10 @@ static const char *warn[] = {
 /* ------- Helper functions ------- */
 static size_t get_task_max_work_group_size()
 {
-	size_t s = MIN(autotune_get_task_max_work_group_size(FALSE, 0, init_kernel), 32);
+	size_t ls = gpu_amd(device_info[gpu_id]) ? 64 :
+		gpu(device_info[gpu_id]) ? 32 : 1024;
+
+	size_t s = MIN(autotune_get_task_max_work_group_size(FALSE, 0, init_kernel), ls);
 	s = MIN(s, autotune_get_task_max_work_group_size(FALSE, 0, crypt_kernel));
 
 	return s;
@@ -96,7 +99,7 @@ static void create_clobj(size_t gws, struct fmt_main *self)
 	intkeysize = sizeof(cl_uint) * gws;
 	statesize = sizeof(krb5tgs_state) * gws * mask_int_cand.num_int_cand;
 	outsize = sizeof(krb5tgs_out) * gws * mask_int_cand.num_int_cand;
-	saltsize = sizeof(krb5tgs_salt) + krb5tgs_max_data_len;
+	saltsize = sizeof(krb5tgs_salt) + krb5tgs_max_data_len - 1;
 
 	pinned_key = clCreateBuffer(context[gpu_id], CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR, insize, NULL, &ret_code);
 	if (ret_code == CL_SUCCESS)
@@ -281,12 +284,13 @@ static void reset(struct db_main *db)
 static void set_salt(void *salt)
 {
 	cur_salt = *(krb5tgs_salt**)salt;
+	size_t cur_salt_size = sizeof(krb5tgs_salt) + cur_salt->edata2len - 1;
 
 	if (cur_salt->edata2len > krb5tgs_max_data_len)
 		error_msg("This should not happen, please report.");
 
 	HANDLE_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], cl_salt, CL_FALSE, 0,
-	                                    saltsize, cur_salt, 0, NULL, NULL),
+	                                    cur_salt_size, cur_salt, 0, NULL, NULL),
 	               "Failed transferring salt");
 	HANDLE_CLERROR(clFlush(queue[gpu_id]), "clFlush failed in set_salt()");
 }
@@ -392,11 +396,14 @@ static int crypt_all(int *pcount, struct db_salt *salt)
 {
 	const int count = *pcount;
 
-	/* kernel is made for lws 32, using local memory */
 	size_t lws = local_work_size ? local_work_size : 32;
-	size_t gws = GET_NEXT_MULTIPLE(count, local_work_size);
+	size_t gws = GET_NEXT_MULTIPLE(count, lws);
 
 	*pcount *= mask_int_cand.num_int_cand;
+
+	/* Safety for when count < GWS */
+	for (int i = count; i <= gws; i++)
+		saved_idx[i] = key_idx;
 
 	if (new_keys) {
 		/* Self-test kludge */

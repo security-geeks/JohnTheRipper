@@ -6,7 +6,7 @@
  * This software is
  * Copyright (c) 2010-2012 Samuele Giovanni Tonon <samu at linuxasylum dot net>
  * Copyright (c) 2010-2013 Lukas Odzioba <ukasz@openwall.net>
- * Copyright (c) 2010-2019 magnum
+ * Copyright (c) 2010-2022 magnum
  * Copyright (c) 2012-2015 Claudio André <claudioandre.br at gmail.com>
  *
  * and is hereby released to the general public under the following terms:
@@ -61,13 +61,9 @@
 
 #define LOG_SIZE 1024*16
 
-// If we are a release build, only output OpenCL build log if
-// there was a fatal error (or --verbosity was increased).
-#ifdef JTR_RELEASE_BUILD
+/* Only output OpenCL build log if there was a fatal error
+ * (or --verbosity was increased). */
 #define LOG_VERB VERB_LEGACY
-#else
-#define LOG_VERB VERB_DEFAULT
-#endif
 
 /* Common OpenCL variables */
 int platform_id;
@@ -123,6 +119,7 @@ cl_kernel crypt_kernel;
 size_t local_work_size;
 size_t global_work_size;
 size_t max_group_size;
+int lws_set_by_user = 0;
 unsigned int ocl_v_width = 1;
 unsigned long long global_speed;
 
@@ -158,6 +155,11 @@ void opencl_process_event(void)
 			event_pending = (event_abort || event_poll_files || event_reload);
 		}
 	}
+}
+
+int get_lws_set_by_user()
+{
+	return (lws_set_by_user != 0);
 }
 
 int get_number_of_available_platforms()
@@ -258,13 +260,13 @@ void opencl_driver_value(int sequential_id, int *major, int *minor)
 		sizeof(dname), dname, NULL), "clGetDeviceInfo for CL_DRIVER_VERSION");
 
 	p = dname;
-	while (*p && !isdigit((int)*p))
+	while (*p && !isdigit((int)(unsigned char)*p))
 		p++;
 	if (*p) {
 		*major = atoi(p);
-		while (*p && isdigit((int)*p))
+		while (*p && isdigit((int)(unsigned char)*p))
 			p++;
-		while (*p && !isdigit((int)*p))
+		while (*p && !isdigit((int)(unsigned char)*p))
 			p++;
 		if (*p) {
 			*minor = atoi(p);
@@ -300,8 +302,7 @@ static char *remove_spaces(char *str) {
 
 static char *opencl_driver_info(int sequential_id)
 {
-	static char buf[64 + MAX_OCLINFO_STRING_LEN];
-	char dname[MAX_OCLINFO_STRING_LEN], tmp[sizeof(buf)], set[64];
+	char dname[MAX_OCLINFO_STRING_LEN], tmp[64 + MAX_OCLINFO_STRING_LEN], set[64];
 	static char output[sizeof(tmp) + sizeof(dname)];
 	char *name, *recommendation = NULL;
 	int major = 0, minor = 0, conf_major = 0, conf_minor = 0, found;
@@ -312,7 +313,7 @@ static char *opencl_driver_info(int sequential_id)
 		sizeof(dname), dname, NULL), "clGetDeviceInfo for CL_DRIVER_VERSION");
 
 	opencl_driver_value(sequential_id, &major, &minor);
-	name = buf;
+	name = "";
 
 	if ((list = cfg_get_list("List.OpenCL:", "Drivers")))
 	if ((line = list->head))
@@ -349,14 +350,7 @@ static char *opencl_driver_info(int sequential_id)
 
 	if (gpu_amd(device_info[sequential_id]) &&
 	    get_platform_vendor_id(get_platform_id(sequential_id)) == DEV_AMD) {
-
-		if (major < 1912)
-			snprintf(buf, sizeof(buf), "%s - Catalyst %s", dname, name);
-		else if (major < 2500)
-			snprintf(buf, sizeof(buf), "%s - Crimson %s", dname, name);
-		else
-			snprintf(buf, sizeof(buf), "%s - AMDGPU-Pro %s", dname, name);
-		snprintf(tmp, sizeof(tmp), "%s", buf);
+		snprintf(tmp, sizeof(tmp), "%s%s%s", dname, *name? " - ": "", name);
 	} else
 		snprintf(tmp, sizeof(tmp), "%s", dname);
 
@@ -827,6 +821,7 @@ void opencl_load_environment(void)
 		int i;
 		const char *cmdline_devices[MAX_GPU_DEVICES];
 
+		local_work_size = global_work_size = duration_time = 0;
 		nvidia_probe();
 		amd_probe();
 
@@ -931,6 +926,31 @@ void opencl_load_environment(void)
 
 		opencl_initialized = 1;
 	}
+}
+
+/* Returns wavefront/warp size, if known, and otherwise 32 */
+uint32_t get_device_warp_size(int sequential_id)
+{
+	uint32_t warp_size = 0;
+
+	/* Try finding out for sure */
+	int ret = clGetDeviceInfo(devices[sequential_id],
+	                          CL_DEVICE_WARP_SIZE_NV,
+	                          sizeof(warp_size), &warp_size, NULL);
+	if (ret != CL_SUCCESS)
+		ret = clGetDeviceInfo(devices[sequential_id],
+		                      CL_DEVICE_WAVEFRONT_WIDTH_AMD,
+		                      sizeof(warp_size), &warp_size, NULL);
+	if (ret == CL_SUCCESS)
+		return warp_size;
+
+	/* Fallback to an educated guess */
+	if (gpu_amd(device_info[sequential_id]))
+		warp_size = 64;
+	else
+		warp_size = 32;
+
+	return warp_size;
 }
 
 /*
@@ -1049,6 +1069,11 @@ void opencl_get_user_preferences(const char *format)
 	else if ((tmp_value = getenv("LWS")))
 		local_work_size = atoi(tmp_value);
 
+	if (local_work_size)
+		lws_set_by_user = 1;
+	else
+		lws_set_by_user = 0;
+
 	if (format && (tmp_value = (char*)cfg_get_param(SECTION_OPTIONS, SUBSECTION_OPENCL,
 			opencl_get_config_name(fmt_base_name, GWS_CONFIG_NAME))))
 		global_work_size = atoi(tmp_value);
@@ -1074,22 +1099,21 @@ void opencl_get_user_preferences(const char *format)
 
 void opencl_get_sane_lws_gws_values()
 {
-	if (self_test_running) {
-		local_work_size = 7;
-		global_work_size = 49;
-	}
 
-	if (!local_work_size) {
+	if (!local_work_size || self_test_running) {
 		if (cpu(device_info[gpu_id]))
 			local_work_size =
-				get_platform_vendor_id(platform_id) == DEV_INTEL ?
-			8 : 1;
+				get_platform_vendor_id(platform_id) == DEV_INTEL ? 8 : 1;
+		else if (self_test_running)
+			local_work_size = get_device_max_lws(gpu_id);
 		else
-			local_work_size = 64;
+			local_work_size = 2 * get_device_warp_size(gpu_id);
 	}
 
-	if (!global_work_size)
-		global_work_size = 768;
+	if (self_test_running)
+		global_work_size = local_work_size;
+	else if (!global_work_size)
+		global_work_size = 12 * local_work_size;
 }
 
 char* get_device_name_(int sequential_id)
@@ -1148,13 +1172,17 @@ static char *get_build_opts(int sequential_id, const char *opts)
 			global_opts = OPENCLBUILDOPTIONS;
 
 	snprintf(build_opts, LINE_BUFFER_SIZE,
-	         "-I opencl %s %s%s%s%s%s%d %s%d %s -D_OPENCL_COMPILER %s",
+	         "-I opencl %s %s%s%s%s%s%s%d %s%d %s -D_OPENCL_COMPILER -DWARP_SIZE=%u -DSHARED_MEM_SIZE=%u %s",
 	        global_opts,
+	        options.verbosity >= VERB_DEBUG &&
+	        get_platform_vendor_id(get_platform_id(sequential_id)) ==
+	         PLATFORM_POCL ? "-g " : "",
 	        get_device_version(sequential_id) >= 200 ? "-cl-std=CL1.2 " : "",
 #ifdef __APPLE__
 	        "-D__OS_X__ ",
 #else
-	        (options.verbosity >= VERB_MAX &&
+	        (cfg_get_bool(SECTION_OPTIONS, SUBSECTION_OPENCL, "NvidiaShowPtxas", 1) &&
+	         options.verbosity >= VERB_LEGACY &&
 	         gpu_nvidia(device_info[sequential_id])) ?
 	         "-cl-nv-verbose " : "",
 #endif
@@ -1171,6 +1199,8 @@ static char *get_build_opts(int sequential_id, const char *opts)
 	        "-DDEVICE_INFO=", device_info[sequential_id],
 	        "-D__SIZEOF_HOST_SIZE_T__=", (int)sizeof(size_t),
 	        opencl_driver_ver(sequential_id),
+	        get_device_warp_size(sequential_id),
+	        (uint32_t)get_local_memory_size(sequential_id),
 	        opts ? opts : "");
 
 	return build_opts;
@@ -1284,21 +1314,37 @@ void opencl_build(int sequential_id, const char *opts, int save, const char *fil
 	uint64_t end = john_get_nano();
 	log_event("- build time: %ss", ns2string(end - start));
 
+	char *cleaned_log = build_log;
+	if (cfg_get_bool(SECTION_OPTIONS, SUBSECTION_OPENCL, "MuteBogusWarnings", 1) &&
+	    options.verbosity < VERB_DEBUG) {
+		while (!strncmp(cleaned_log, "(): Warning: Function ", 22) && strstr(cleaned_log + 23, " is a kernel, so overriding noinline attribute. The function may be inlined when called."))
+			while (*cleaned_log && *cleaned_log++ != '\n');
+	}
+
 	// Report build errors and warnings
+	// Nvidia may return a single '\n' that we ignore
 	if (build_code != CL_SUCCESS) {
 		// Give us info about error and exit (through HANDLE_CLERROR)
 		if (options.verbosity <= VERB_LEGACY)
 			fprintf(stderr, "Options used: %s %s\n",
 			        build_opts, kernel_source_file);
-		if (strlen(build_log) > 1)
-			fprintf(stderr, "Build log: %s\n", build_log);
+		if (strlen(cleaned_log) > 1) {
+			fprintf(stderr, "Build time: %ss\n", ns2string(end - start));
+			fprintf(stderr, "Build log: %s\n", cleaned_log);
+		} else if (options.verbosity >= VERB_MAX)
+			fprintf(stderr, "Build time: %ss\n", ns2string(end - start));
 		fprintf(stderr, "Error building kernel %s. DEVICE_INFO=%d\n",
 		        kernel_source_file, device_info[sequential_id]);
 		HANDLE_CLERROR(build_code, "clBuildProgram");
 	}
-	// Nvidia may return a single '\n' that we ignore
-	else if (options.verbosity >= LOG_VERB && strlen(build_log) > 1)
-		fprintf(stderr, "Build log: %s\n", build_log);
+	else if (cfg_get_bool(SECTION_OPTIONS, SUBSECTION_OPENCL, "AlwaysShowBuildWarnings", 1) ||
+	         options.verbosity >= LOG_VERB) {
+		if (strlen(cleaned_log) > 1) {
+			fprintf(stderr, "Build time: %ss\n", ns2string(end - start));
+			fprintf(stderr, "Build log: %s\n", cleaned_log);
+		} else if (options.verbosity >= VERB_MAX)
+			fprintf(stderr, "Build time: %ss\n", ns2string(end - start));
+	}
 
 	MEM_FREE(build_log);
 	MEM_FREE(build_opts);
@@ -1398,6 +1444,8 @@ cl_int opencl_build_from_binary(int sequential_id, cl_program *program, const ch
 		fprintf(stderr, "Binary Build log: %s\n", build_log);
 
 	log_event("- build time: %ss", ns2string(end - start));
+	if (options.verbosity >= VERB_MAX)
+		fprintf(stderr, "Build time: %ss\n", ns2string(end - start));
 	MEM_FREE(build_log);
 	return CL_SUCCESS;
 }
@@ -1557,7 +1605,7 @@ static cl_ulong gws_test(size_t gws, unsigned int rounds, int sequential_id)
 	for (i = 0; (*multi_profilingEvent[i]); i++)
 		number_of_events++;
 
-	//** Get execution time **//
+	/* Get execution time */
 	for (i = 0; i < number_of_events; i++) {
 		char mult[32] = "";
 
@@ -1671,9 +1719,9 @@ void opencl_init_auto_setup(int p_default_value, int p_hash_loops,
 	autotune_real_db = db && db->real && db->real == db;
 	autotune_salts = db ? db->salts : NULL;
 
-	/* We can't process more than 4G keys per crypt() */
+	/* We can't process more than 2G-1 keys per crypt_all() */
 	if (mask_int_cand.num_int_cand > 1)
-		gws_limit = MIN(gws_limit, 0x100000000ULL / mask_int_cand.num_int_cand / ocl_v_width);
+		gws_limit = MIN(gws_limit, 0x7fffffffU / mask_int_cand.num_int_cand / ocl_v_width);
 }
 
 void opencl_find_best_lws(size_t group_size_limit, int sequential_id,
@@ -2157,22 +2205,22 @@ static void load_device_info(int sequential_id)
 	else if (device == CL_DEVICE_TYPE_ACCELERATOR)
 		device_info[sequential_id] = DEV_ACCELERATOR;
 
-	device_info[sequential_id] += get_vendor_id(sequential_id);
-	device_info[sequential_id] += get_processor_family(sequential_id);
-	device_info[sequential_id] += get_byte_addressable(sequential_id);
+	device_info[sequential_id] |= get_vendor_id(sequential_id);
+	device_info[sequential_id] |= get_processor_family(sequential_id);
+	device_info[sequential_id] |= get_byte_addressable(sequential_id);
 
 	get_compute_capability(sequential_id, &major, &minor);
 
 	if (major) {
-		device_info[sequential_id] += (major == 2 ? DEV_NV_C2X : 0);
-		device_info[sequential_id] +=
+		device_info[sequential_id] |= (major == 2 ? DEV_NV_C2X : 0);
+		device_info[sequential_id] |=
 		    (major == 3 && minor == 0 ? DEV_NV_C30 : 0);
-		device_info[sequential_id] +=
+		device_info[sequential_id] |=
 		    (major == 3 && minor == 2 ? DEV_NV_C32 : 0);
-		device_info[sequential_id] +=
+		device_info[sequential_id] |=
 		    (major == 3 && minor == 5 ? DEV_NV_C35 : 0);
-		device_info[sequential_id] += (major == 5 ? DEV_NV_MAXWELL : 0);
-		device_info[sequential_id] += (major >= 5 ? DEV_NV_MAXWELL_PLUS : 0);
+		device_info[sequential_id] |= (major == 5 ? DEV_NV_MAXWELL : 0);
+		device_info[sequential_id] |= (major >= 5 ? DEV_NV_MAXWELL_PLUS : 0);
 	}
 }
 
@@ -2528,17 +2576,19 @@ size_t get_kernel_preferred_multiple(int sequential_id, cl_kernel crypt_kernel)
 void get_compute_capability(int sequential_id, unsigned int *major,
                             unsigned int *minor)
 {
-	clGetDeviceInfo(devices[sequential_id],
-	                CL_DEVICE_COMPUTE_CAPABILITY_MAJOR_NV,
-	                sizeof(cl_uint), major, NULL);
-	clGetDeviceInfo(devices[sequential_id],
-	                CL_DEVICE_COMPUTE_CAPABILITY_MINOR_NV,
-	                sizeof(cl_uint), minor, NULL);
-
-	if (!major) {
+	ret_code = clGetDeviceInfo(devices[sequential_id],
+	                           CL_DEVICE_COMPUTE_CAPABILITY_MAJOR_NV,
+	                           sizeof(cl_uint), major, NULL);
+	if (ret_code == CL_SUCCESS) {
+		clGetDeviceInfo(devices[sequential_id],
+		                CL_DEVICE_COMPUTE_CAPABILITY_MINOR_NV,
+		                sizeof(cl_uint), minor, NULL);
+		return;
+	} else {
 /*
- * Apple, VCL and some other environments don't expose CL_DEVICE_COMPUTE_CAPABILITY_MINOR_NV
- * so we need this crap - which is incomplete, best effort matching.
+ * Apple, VCL and some other environments/drivers don't expose
+ * CL_DEVICE_COMPUTE_CAPABILITY_*_NV so we need this incomplete,
+ * best effort matching.
  * http://en.wikipedia.org/wiki/Comparison_of_Nvidia_graphics_processing_units
  */
 		char dname[MAX_OCLINFO_STRING_LEN];
@@ -2548,31 +2598,48 @@ void get_compute_capability(int sequential_id, unsigned int *major,
 		                               sizeof(dname), dname, NULL),
 		               "clGetDeviceInfo for CL_DEVICE_NAME");
 
-		// Ampere 8.0
+		// Blackwell 12.0
+		if (strstr(dname, "RTX 50")) {
+			*major = 12;
+		} else
+		// Ada Lovelace 8.9
+		if (strstr(dname, "RTX 40") || strstr(dname, "L40S")) {
+			*major = 8;
+			*minor = 9;
+		} else
+		// Ampere 8.6
 		if ((strstr(dname, "RTX 30") ||
 		           (strstr(dname, "RTX A") && (dname[5] >= '1' && dname[5] <= '9')) ||
-		     (dname[0] == 'A' && dname[1] >= '1' && dname[1] <= '9')))
+		     (dname[0] == 'A' && dname[1] >= '1' && dname[1] <= '9'))) {
 			*major = 8;
+			*minor = 6;
+		} else
 		// Volta 7.0, Turing 7.5
-		else if (strstr(dname, "TITAN V") || strstr(dname, "RTX 20")) {
+		if (strstr(dname, "TITAN V") || strstr(dname, "RTX 20")) {
 			*major = 7;
 			if (strstr(dname, "RTX 20"))
 				*minor = 5;
-		}
-		// Pascal 6.x
-		else if (strstr(dname, "GT 10") || strstr(dname, "GTX 10") || strcasestr(dname, "TITAN Xp"))
+		} else
+		// Pascal 6.1
+		if (strstr(dname, "GT 10") || strstr(dname, "GTX 10") || strcasestr(dname, "TITAN Xp")) {
 			*major = 6;
-		// Maxwell 5.x
-		else if (strstr(dname, "GT 9") || strstr(dname, "GTX 9") || strstr(dname, "GTX TITAN X"))
+			*minor = 1;
+		} else
+		// Maxwell 5.2
+		if (strstr(dname, "GT 9") || strstr(dname, "GTX 9") || strstr(dname, "GTX TITAN X")) {
 			*major = 5;
-		// Kepler 3.x
-		else if (strstr(dname, "GT 6") || strstr(dname, "GTX 6") ||
-		         strstr(dname, "GT 7") || strstr(dname, "GTX 7") ||
-		         strstr(dname, "GT 8") || strstr(dname, "GTX 8") ||
-		         strstr(dname, "GTX TITAN"))
+			*minor = 2;
+		// Kepler 3.5
+		} else
+		if (strstr(dname, "GT 6") || strstr(dname, "GTX 6") ||
+		    strstr(dname, "GT 7") || strstr(dname, "GTX 7") ||
+		    strstr(dname, "GT 8") || strstr(dname, "GTX 8") ||
+		    strstr(dname, "GTX TITAN")) {
 			*major = 3;
+			*minor = 5;
+		} else
 		// Fermi 2.0
-		else if (strstr(dname, "GT 5") || strstr(dname, "GTX 5"))
+		if (strstr(dname, "GT 5") || strstr(dname, "GTX 5"))
 			*major = 2;
 	}
 }
@@ -2593,19 +2660,19 @@ cl_uint get_processors_count(int sequential_id)
 		unsigned int major = 0, minor = 0;
 
 		get_compute_capability(sequential_id, &major, &minor);
-		if (major == 1)         // 1.x Tesla
+		if (major == 1)	// Tesla
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 8);
-		else if (major == 2 && minor == 0)  // 2.0 Fermi
+		else if (major == 2 && minor == 0)	// // 2.0 Fermi
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 32);
-		else if (major == 2 && minor >= 1)  // 2.1 Fermi
+		else if (major == 2 && minor >= 1)	// // 2.1 Fermi
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 48);
-		else if (major == 3)    // 3.x Kepler
+		else if (major == 3)	// 3.x Kepler
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 192);
-		else if (major == 5)    // 5.x Maxwell
+		else if (major == 5)	// 5.x Maxwell
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 128);
-		else if (major == 6)    // 6.x Pascal
+		else if (major == 6)	// Pascal
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 128);
-		else if (major >= 7)    // 7.0 Volta, 7.5 Turing, 8.x Ampere
+		else if (major >= 7) // Volta or newer, verified up to Blackwell (RTX 50xx)
 			core_count *= (ocl_device_list[sequential_id].cores_per_MP = 64);
 	} else if (gpu_intel(device_info[sequential_id])) {
 		// It seems all current models are x 8
@@ -2656,8 +2723,7 @@ cl_uint get_processor_family(int sequential_id)
 	if (*dname)
 		strlwr(&dname[1]);
 
-	if gpu_amd
-	(device_info[sequential_id]) {
+	if (gpu_amd(device_info[sequential_id])) {
 
 		if ((strstr(dname, "Cedar") ||  //AMD Radeon VLIW5
 		        strstr(dname, "Redwood") || strstr(dname, "Juniper")
@@ -3189,7 +3255,7 @@ void opencl_list_devices(void)
 				unsigned int major = 0, minor = 0;
 
 				get_compute_capability(sequence_nr, &major, &minor);
-				if (major && minor)
+				if (major)
 					printf("    Compute capability:     %u.%u "
 					       "(sm_%u%u)\n", major, minor, major, minor);
 			}

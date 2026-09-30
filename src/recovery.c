@@ -263,7 +263,7 @@ void rec_save(void)
 #endif
 	opt = rec_argv;
 	while (*++opt) {
-		/********* Re-write deprecated options *********/
+		/********* Re-write or drop deprecated options *********/
 		if (!strncmp(*opt, "--internal-encoding", 19))
 			memcpy(*opt, "--internal-codepage", 19);
 		else
@@ -278,6 +278,13 @@ void rec_save(void)
 		}
 		else
 		if (!strncmp(*opt, "--fix-state-delay", 17)) {
+			char **o = opt;
+			do
+				*o = o[1];
+			while (*++o);
+			rec_argc--;
+		}
+		if (!strcmp(*opt, "--prince-mmap")) {
 			char **o = opt;
 			do
 				*o = o[1];
@@ -482,7 +489,6 @@ void rec_done(int save)
 static void rec_format_error(char *fn)
 {
 	path_done();
-	cleanup_tiny_memory();
 
 	if (fn && errno && ferror(rec_file))
 		pexit("%s", fn);

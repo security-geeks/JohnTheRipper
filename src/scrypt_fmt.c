@@ -37,6 +37,8 @@
 #define FMT_SCRYPTKDF_LEN       (sizeof(FMT_SCRYPTKDF)-1)
 #if !defined(JOHN_NO_SIMD) && defined(__XOP__)
 #define ALGORITHM_NAME			"Salsa20/8 128/128 XOP"
+#elif !defined(JOHN_NO_SIMD) && defined(__AVX512VL__)
+#define ALGORITHM_NAME			"Salsa20/8 128/128 AVX512VL"
 #elif !defined(JOHN_NO_SIMD) && defined(__AVX__)
 #define ALGORITHM_NAME			"Salsa20/8 128/128 AVX"
 #elif !defined(JOHN_NO_SIMD) && defined(__SSE2__)
@@ -48,7 +50,7 @@
 #define BENCHMARK_COMMENT		" (16384, 8, 1)"
 #define BENCHMARK_LENGTH		0x107
 
-#define PLAINTEXT_LENGTH		125
+#define PLAINTEXT_LENGTH		MAX_PLAINTEXT_LENGTH
 
 #define BINARY_SIZE			256
 #define BINARY_ALIGN			1

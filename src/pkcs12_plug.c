@@ -36,7 +36,7 @@
 #define PKCS12_MAX_PWDLEN 128
 
 
-static int mbedtls_pkcs12_derivation( unsigned char *data, size_t datalen, const
+static int pkcs12_derivation( unsigned char *data, size_t datalen, const
 		unsigned char *pwd, size_t pwdlen, const unsigned char *salt,
 		size_t saltlen, int md_type, int id, int iterations );
 
@@ -59,7 +59,7 @@ int pkcs12_pbe_derive_key( int md_type, int iterations, int id, const unsigned
 	// 2  => BestCrypt specific PKCS12 Whirlpool-512, hack
 	// 10 => BestCrypt specific PKCS12 SHA-512, hack
 	if (md_type == 1 || md_type == 256 || md_type == 512 || md_type == 224 || md_type == 384 || md_type == 2 || md_type == 10)
-		mbedtls_pkcs12_derivation(key, keylen, unipwd.c, pwdlen, salt,
+		pkcs12_derivation(key, keylen, unipwd.c, pwdlen, salt,
 				saltlen, md_type, id, iterations);
     return 0;
 }
@@ -79,7 +79,7 @@ static void pkcs12_fill_buffer( unsigned char *data, size_t data_len,
     }
 }
 
-static int mbedtls_pkcs12_derivation( unsigned char *data, size_t datalen, const
+static int pkcs12_derivation( unsigned char *data, size_t datalen, const
 		unsigned char *pwd, size_t pwdlen, const unsigned char *salt,
 		size_t saltlen, int md_type, int id, int iterations )
 {
@@ -100,7 +100,7 @@ static int mbedtls_pkcs12_derivation( unsigned char *data, size_t datalen, const
 
     // This version only allows max of 48 bytes of password or salt
     if ( datalen > 128 || pwdlen > 48*2+2 || saltlen > 64 )
-        return -1; // MBEDTLS_ERR_PKCS12_BAD_INPUT_DATA
+        return -1; // ERR_PKCS12_BAD_INPUT_DATA
 
     switch (md_type) {
 	//case 0:
@@ -294,11 +294,11 @@ static int mbedtls_pkcs12_derivation( unsigned char *data, size_t datalen, const
 #endif
 
 
-static int mbedtls_pkcs12_derivation_simd_sha1( unsigned char *data[SSE_GROUP_SZ_SHA1],
+static int pkcs12_derivation_simd_sha1( unsigned char *data[SSE_GROUP_SZ_SHA1],
 	        size_t datalen, const unsigned char *pwd[SSE_GROUP_SZ_SHA1],
 	        size_t pwdlen[SSE_GROUP_SZ_SHA1], const unsigned char *salt, size_t saltlen,
 	        int id, int iterations );
-static int mbedtls_pkcs12_derivation_simd_sha256( unsigned char *data[SSE_GROUP_SZ_SHA256],
+static int pkcs12_derivation_simd_sha256( unsigned char *data[SSE_GROUP_SZ_SHA256],
                 size_t datalen, const unsigned char *pwd[SSE_GROUP_SZ_SHA256],
                 size_t pwdlen[SSE_GROUP_SZ_SHA256], const unsigned char *salt, size_t saltlen,
                 int id, int iterations );
@@ -342,7 +342,7 @@ int pkcs12_pbe_derive_key_simd_sha1( int iterations, int id, const unsigned char
 
 		pwdlen[j] = 2 * (len + 1);
 	}
-	mbedtls_pkcs12_derivation_simd_sha1(key, keylen, unipwd, pwdlen, salt, saltlen, id, iterations);
+	pkcs12_derivation_simd_sha1(key, keylen, unipwd, pwdlen, salt, saltlen, id, iterations);
 	return 0;
 }
 
@@ -367,12 +367,12 @@ int pkcs12_pbe_derive_key_simd_sha256( int iterations, int id, const unsigned ch
 
 		pwdlen[j] = 2 * (len + 1);
 	}
-	mbedtls_pkcs12_derivation_simd_sha256(key, keylen, unipwd, pwdlen, salt, saltlen, id, iterations);
+	pkcs12_derivation_simd_sha256(key, keylen, unipwd, pwdlen, salt, saltlen, id, iterations);
 	return 0;
 }
 
 
-static void pkcs12_fill_salt_buffer_simd(unsigned char *data[SIMD_MAX_GROUP_PFX], size_t data_len,
+static void pkcs12_fill_salt_buffer_simd(unsigned char *data[], size_t data_len,
                                     const unsigned char *filler, size_t fill_len, int fill_count)
 {
 	int j;
@@ -393,9 +393,9 @@ static void pkcs12_fill_salt_buffer_simd(unsigned char *data[SIMD_MAX_GROUP_PFX]
 	}
 }
 
-static void pkcs12_fill_buffer_simd(unsigned char *data[SIMD_MAX_GROUP_PFX], size_t data_len,
-                                    const unsigned char *filler[SIMD_MAX_GROUP_PFX],
-				    size_t fill_len[SIMD_MAX_GROUP_PFX], int fill_count)
+static void pkcs12_fill_buffer_simd(unsigned char *data[], size_t data_len,
+                                    const unsigned char *filler[],
+				    size_t fill_len[], int fill_count)
 {
 	int j;
 	unsigned char *p;
@@ -416,7 +416,7 @@ static void pkcs12_fill_buffer_simd(unsigned char *data[SIMD_MAX_GROUP_PFX], siz
 	}
 }
 
-static int mbedtls_pkcs12_derivation_simd_sha1( unsigned char *data[SSE_GROUP_SZ_SHA1], size_t datalen,
+static int pkcs12_derivation_simd_sha1( unsigned char *data[SSE_GROUP_SZ_SHA1], size_t datalen,
 	        const unsigned char *pwd[SSE_GROUP_SZ_SHA1], size_t pwdlen[SSE_GROUP_SZ_SHA1],
 	        const unsigned char *salt, size_t saltlen, int id, int iterations )
 {
@@ -524,7 +524,7 @@ static int mbedtls_pkcs12_derivation_simd_sha1( unsigned char *data[SSE_GROUP_SZ
 	return 0;
 }
 
-static int mbedtls_pkcs12_derivation_simd_sha256( unsigned char *data[SSE_GROUP_SZ_SHA256], size_t datalen,
+static int pkcs12_derivation_simd_sha256( unsigned char *data[SSE_GROUP_SZ_SHA256], size_t datalen,
 	        const unsigned char *pwd[SSE_GROUP_SZ_SHA256], size_t pwdlen[SSE_GROUP_SZ_SHA256],
 	        const unsigned char *salt, size_t saltlen, int id, int iterations )
 {
@@ -634,6 +634,10 @@ static int mbedtls_pkcs12_derivation_simd_sha256( unsigned char *data[SSE_GROUP_
 
 #if defined(SIMD_COEF_64)
 
+/* We use SSEi_HALF_IN, so can halve SHA_BUF_SIZ */
+#undef SHA_BUF_SIZ
+#define SHA_BUF_SIZ 8
+
 // 64 bit mixer
 #if ARCH_LITTLE_ENDIAN==1
 #define GETPOS4(i, index)        ( (index&(SIMD_COEF_64-1))*8 + ((i)&(0xffffffff-7))*SIMD_COEF_64 + (7-((i)&7)) + (unsigned int)index/SIMD_COEF_64*SHA_BUF_SIZ*SIMD_COEF_64*8 )
@@ -641,7 +645,7 @@ static int mbedtls_pkcs12_derivation_simd_sha256( unsigned char *data[SSE_GROUP_
 #define GETPOS4(i, index)        ( (index&(SIMD_COEF_64-1))*8 + ((i)&(0xffffffff-7))*SIMD_COEF_64 + ((i)&7) + (unsigned int)index/SIMD_COEF_64*SHA_BUF_SIZ*SIMD_COEF_64*8 )
 #endif
 
-static int mbedtls_pkcs12_derivation_simd_sha512( unsigned char *data[SSE_GROUP_SZ_SHA512], size_t datalen,
+static int pkcs12_derivation_simd_sha512( unsigned char *data[SSE_GROUP_SZ_SHA512], size_t datalen,
 	        const unsigned char *pwd[SSE_GROUP_SZ_SHA512], size_t pwdlen[SSE_GROUP_SZ_SHA512],
 	        const unsigned char *salt, size_t saltlen, int id, int iterations );
 
@@ -666,11 +670,11 @@ int pkcs12_pbe_derive_key_simd_sha512(int iterations, int id, const unsigned cha
 
 		pwdlen[j] = 2 * (len + 1);
 	}
-	mbedtls_pkcs12_derivation_simd_sha512(key, keylen, unipwd, pwdlen, salt, saltlen, id, iterations);
+	pkcs12_derivation_simd_sha512(key, keylen, unipwd, pwdlen, salt, saltlen, id, iterations);
 	return 0;
 }
 
-static int mbedtls_pkcs12_derivation_simd_sha512( unsigned char *data[SSE_GROUP_SZ_SHA512], size_t datalen,
+static int pkcs12_derivation_simd_sha512( unsigned char *data[SSE_GROUP_SZ_SHA512], size_t datalen,
 	        const unsigned char *pwd[SSE_GROUP_SZ_SHA512], size_t pwdlen[SSE_GROUP_SZ_SHA512],
 	        const unsigned char *salt, size_t saltlen, int id, int iterations )
 {
@@ -700,7 +704,6 @@ static int mbedtls_pkcs12_derivation_simd_sha512( unsigned char *data[SSE_GROUP_
 	v = 128;
 
 	memset(diversifier, (unsigned char) id, v);
-	memset(sse_buf, 0, sizeof(sse_buf));
 
 	pkcs12_fill_salt_buffer_simd(salt_block, v, salt, saltlen, SSE_GROUP_SZ_SHA512);
 	pkcs12_fill_buffer_simd(pwd_block,  v, pwd,  pwdlen, SSE_GROUP_SZ_SHA512);
@@ -718,13 +721,11 @@ static int mbedtls_pkcs12_derivation_simd_sha512( unsigned char *data[SSE_GROUP_
 			for (i = 0; i < SHA512_DIGEST_LENGTH; ++i) {
 				sse_buf[GETPOS4(i, k)] = hash[i];
 			}
-			sse_buf[GETPOS4(64,k)] = 0x80;
-			sse_buf[GETPOS4(126,k)] = 2; // (SHA512_DIGEST_LENGTH<<3);
 		}
 
 		// Perform remaining ( iterations - 1 ) recursive hash calculations
-		for ( i = 1; i < (size_t) iterations; i++ )
-			SIMDSHA512body(sse_buf, (uint64_t*)sse_buf, NULL, SSEi_MIXED_IN|SSEi_OUTPUT_AS_INP_FMT);
+		uint64_t rounds = iterations - 1;
+		SIMDSHA512body(sse_buf, (uint64_t*)sse_buf, &rounds, SSEi_HALF_IN|SSEi_LOOP);
 
 		// Now unmarshall the data from sse_buf
 		use_len = ( datalen > hlen ) ? hlen : datalen;

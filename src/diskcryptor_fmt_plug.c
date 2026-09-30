@@ -46,13 +46,11 @@ john_register_one(&fmt_diskcryptor);
 #define ALGORITHM_NAME          "PBKDF2-SHA512 32/" ARCH_BITS_STR
 #endif
 #endif
-#define BENCHMARK_COMMENT       ""
-#define BENCHMARK_LENGTH        0x107
 #define BINARY_SIZE             0
 #define BINARY_ALIGN            1
 #define SALT_SIZE               sizeof(struct custom_salt)
 #define SALT_ALIGN              sizeof(uint32_t)
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #ifdef SIMD_COEF_64
 #define MIN_KEYS_PER_CRYPT      SSE_GROUP_SZ_SHA512
 #define MAX_KEYS_PER_CRYPT      (SSE_GROUP_SZ_SHA512 * 4)

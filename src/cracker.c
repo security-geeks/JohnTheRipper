@@ -1,8 +1,11 @@
 /*
  * This file is part of John the Ripper password cracker,
  * Copyright (c) 1996-2003,2006,2010-2013,2015,2017 by Solar Designer
+ * Copyright (c) 2009-2018 by JimF
+ * Copyright (c) 2011-2025 by magnum
  *
- * ...with heavy changes in the jumbo patch, by magnum & JimF
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted.
  */
 
 #define NEED_OS_TIMER
@@ -67,6 +70,7 @@
 #endif
 #include "rules.h"
 #include "tty.h"
+#include "color.h"
 
 #ifdef index
 #undef index
@@ -158,6 +162,8 @@ static void crk_help(void)
 #else
 		        "or send SIGHUP to john process for status\n");
 #endif
+	if (event_delayed_status)
+		fprintf(stderr, "Delayed status pending...\r");
 
 	printed = 1;
 }
@@ -176,11 +182,15 @@ void crk_init(struct db_main *db, void (*fix_state)(void),
  * or if the format has a custom reset() method (we've already called reset(db)
  * from john.c, and we don't want to mess with the format's state).
  */
-	if (db->loaded && db->format->methods.reset == fmt_default_reset)
-	if ((where = fmt_self_test(db->format, db))) {
-		log_event("! Self test failed (%s)", where);
-		fprintf(stderr, "Self test failed (%s)\n", where);
-		error();
+	if (db->loaded && db->format->methods.reset == fmt_default_reset && !(options.flags & FLG_NOTESTS)) {
+		struct db_main *test_db = ldr_init_test_db(db->format, db);
+
+		if ((where = fmt_self_test(db->format, test_db))) {
+			log_event("! Self test failed (%s)", where);
+			fprintf(stderr, "Self test failed (%s)\n", where);
+			error();
+		}
+		ldr_free_db(test_db, 1);
 	}
 
 #if HAVE_OPENCL
@@ -265,7 +275,7 @@ void crk_init(struct db_main *db, void (*fix_state)(void),
 	 * Resetting crk_process_key above disables the suppressor, but it can
 	 * possibly be re-enabled by a cracking mode.
 	 */
-	if (status.suppressor_start) {
+	if (status.suppressor_start && !status.suppressor_end) {
 		status.suppressor_end = status.cands;
 		status.suppressor_end_time = status_get_time();
 	}
@@ -424,7 +434,7 @@ static int crk_process_guess(struct db_salt *salt, struct db_password *pw, int i
 			utf8_to_cp_r(utf8key, tmp8,
 			             PLAINTEXT_BUFFER_SIZE);
 			if (strcmp(tmp8, key)) {
-				fprintf(stderr, "Warning, conversion failed %s"
+				fprintf_color(color_warning, stderr, "Warning, conversion failed %s"
 				        " -> %s -> %s - fallback to codepage\n",
 				        key, utf8key, tmp8);
 				log_event("Warning, conversion failed %s -> %s"
@@ -789,6 +799,17 @@ static void crk_poll_files(void)
 
 static int crk_process_event(void)
 {
+	static int hugepage_reported;
+	if (!hugepage_reported) {
+		const char *msg = hugepage_report();
+		if (msg) {
+			log_event("%s", msg);
+			if (john_main_process)
+				fprintf(stderr, "%s\n", msg);
+		}
+		hugepage_reported = 1;
+	}
+
 #ifdef HAVE_MPI
 	if (event_mpiprobe) {
 		event_mpiprobe = 0;
@@ -884,7 +905,7 @@ static int crk_password_loop(struct db_salt *salt)
 			last_warn_kpc = crk_key_index;
 			if (options.node_count)
 				fprintf(stderr, "%u: ", NODE);
-			fprintf(stderr, "Warning: Only %d%s candidate%s buffered%s, "
+			fprintf_color(color_warning, stderr, "Warning: Only %d%s candidate%s buffered%s, "
 			        "minimum %d needed for performance.\n",
 			        crk_key_index,
 			        mask_int_cand.num_int_cand > 1 ? " base" : "",
@@ -895,7 +916,7 @@ static int crk_password_loop(struct db_salt *salt)
 			if (!--kpc_warn_limit) {
 				if (options.node_count)
 					fprintf(stderr, "%u: ", NODE);
-				fprintf(stderr,
+				fprintf_color(color_warning, stderr,
 				        "Further messages of this type will be suppressed.\n");
 				log_event(
 "- Saw %d calls to crypt_all() with sub-optimal batch size (stopped counting)",

@@ -177,7 +177,7 @@ extern char *str_alloc_copy(const char *src);
 /*
  * This will 'cleanup' the memory allocated by mem_alloc_tiny().  All
  * of that memory was 'blindly' allocated, and not freed up during
- * the run of john.  Now, it is 'cleaned' up.
+ * the run of john.  Called via atexit().
  */
 extern void cleanup_tiny_memory();
 
@@ -306,13 +306,7 @@ extern void alter_endianity_w64(void *x, unsigned int count);
 #endif
 #endif
 
-typedef struct {
-	void * base, * aligned;
-	size_t base_size, aligned_size;
-} region_t;
-
-extern void* alloc_region_t(region_t * region, size_t size);
-extern void init_region_t(region_t * region);
-extern int free_region_t(region_t * region);
+#include "yescrypt/yescrypt.h"
+typedef yescrypt_region_t region_t;
 
 #endif

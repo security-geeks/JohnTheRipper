@@ -2,7 +2,7 @@
  * Mac OS X 10.7+ salted SHA-512 password hashing, OpenCL interface.
  * Please note that in current comparison function, we use computed a77
  * compares with ciphertext d80. For more details, refer to:
- * http://www.openwall.com/lists/john-dev/2012/04/11/13
+ * https://www.openwall.com/lists/john-dev/2012/04/11/13
  *
  * Copyright (c) 2008,2011 Solar Designer (original CPU-only code)
  * Copyright (c) 2012 myrice (interfacing to OpenCL)
@@ -34,8 +34,8 @@ john_register_one(&fmt_opencl_xsha512);
 #include "rawSHA512_common.h"
 
 #define FORMAT_LABEL			"XSHA512-free-opencl"
-#define FORMAT_NAME			"Mac OS X 10.7+"
-#define ALGORITHM_NAME			"SHA512 OpenCL (efficient at \"many salts\" only)"
+#define FORMAT_NAME			"Mac OS X 10.7"
+#define ALGORITHM_NAME			"SHA512 ($s.$p) OpenCL (efficient at \"many salts\" only)"
 
 #define BENCHMARK_COMMENT		""
 
@@ -83,6 +83,7 @@ static xsha512_hash *ghash;
 static xsha512_salt gsalt;
 static uint8_t new_keys;
 static uint8_t hash_copy_back;
+static uint32_t zero;
 
 //OpenCL variables:
 static cl_mem mem_in, mem_out, mem_salt, mem_binary, mem_cmp;
@@ -383,6 +384,10 @@ static int cmp_all(void *binary, int count)
 	BENCH_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mem_binary,
 		CL_FALSE, 0, sizeof(uint64_t), ((uint64_t *) binary) + 3, 0,
 		NULL, multi_profilingEvent[2]), "Copy mem_binary");
+
+	// Clear result (race condition if done in kernel)
+	BENCH_CLERROR(clEnqueueWriteBuffer(queue[gpu_id], mem_cmp, CL_FALSE, 0,
+		sizeof(uint32_t), &zero, 0, NULL, NULL), "Clear result buffer");
 
 	///Run kernel
 	BENCH_CLERROR(clEnqueueNDRangeKernel

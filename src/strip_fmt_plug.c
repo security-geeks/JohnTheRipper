@@ -43,7 +43,7 @@ john_register_one(&fmt_strip);
 #define BENCHMARK_COMMENT       ""
 #define BENCHMARK_LENGTH        0x107
 #define BINARY_SIZE             0
-#define PLAINTEXT_LENGTH        125
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #define SALT_SIZE               sizeof(struct custom_salt)
 #define BINARY_ALIGN            1
 #define SALT_ALIGN              1
@@ -93,7 +93,7 @@ static int crypt_all(int *pcount, struct db_salt *salt)
 #endif
 	for (index = 0; index < count; index += MIN_KEYS_PER_CRYPT) {
 		unsigned char master[MIN_KEYS_PER_CRYPT][32];
-		unsigned char output[24];
+		unsigned char output[32];
 		unsigned char *iv_in;
 		unsigned char iv_out[16];
 		int size,i;

@@ -32,8 +32,8 @@ john_register_one(&fmt_pgpwde);
 #include "pgpwde_common.h"
 
 #define FORMAT_LABEL            "pgpwde"
-#define ALGORITHM_NAME          "S2K-SHA1 " ARCH_BITS_STR
-#define PLAINTEXT_LENGTH        125
+#define ALGORITHM_NAME          "S2K-SHA1 32/" ARCH_BITS_STR
+#define PLAINTEXT_LENGTH        MAX_PLAINTEXT_LENGTH
 #define SALT_SIZE               sizeof(struct custom_salt)
 #define SALT_ALIGN              sizeof(int)
 #define BINARY_SIZE             0

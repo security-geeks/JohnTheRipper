@@ -7,7 +7,7 @@
  * and binary forms, with or without modification, are permitted.
  *
  * The DragonFly BSD 2.10.1-REL crypt-sha2 hashes are seriously broken. See
- * http://www.openwall.com/lists/john-dev/2012/01/16/1
+ * https://www.openwall.com/lists/john-dev/2012/01/16/1
  *
  */
 
@@ -44,7 +44,7 @@ john_register_one(&fmt_dragonfly4_64);
 #define BENCHMARK_COMMENT		""
 #define BENCHMARK_LENGTH		7
 
-#define PLAINTEXT_LENGTH		125
+#define PLAINTEXT_LENGTH		MAX_PLAINTEXT_LENGTH
 #define CIPHERTEXT_LENGTH		84
 
 #define BINARY_SIZE			64

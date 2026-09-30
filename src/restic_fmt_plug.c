@@ -10,7 +10,7 @@
 extern struct fmt_main fmt_restic;
 #elif FMT_REGISTERS_H
 john_register_one(&fmt_restic);
-#endif
+#else
 
 #include <string.h>
 
@@ -34,6 +34,8 @@ john_register_one(&fmt_restic);
 /* SCRYPT_ALGORITHM_NAME is based on scrypt_fmt.c */
 #if !defined(JOHN_NO_SIMD) && defined(__XOP__)
 #define SCRYPT_ALGORITHM_NAME "Salsa20/8 128/128 XOP"
+#elif !defined(JOHN_NO_SIMD) && defined(__AVX512VL__)
+#define SCRYPT_ALGORITHM_NAME "Salsa20/8 128/128 AVX512VL"
 #elif !defined(JOHN_NO_SIMD) && defined(__AVX__)
 #define SCRYPT_ALGORITHM_NAME "Salsa20/8 128/128 AVX"
 #elif !defined(JOHN_NO_SIMD) && defined(__SSE2__)
@@ -42,7 +44,7 @@ john_register_one(&fmt_restic);
 #define SCRYPT_ALGORITHM_NAME "Salsa20/8 32/" ARCH_BITS_STR
 #endif
 #define ALGORITHM_NAME "scrypt " SCRYPT_ALGORITHM_NAME ", Poly1305"
-#define PLAINTEXT_LENGTH 125
+#define PLAINTEXT_LENGTH MAX_PLAINTEXT_LENGTH
 #define BINARY_SIZE 16 /* MAC */
 #define BINARY_ALIGN sizeof(uint32_t)
 #define DATA_SIZE 160
@@ -368,3 +370,5 @@ struct fmt_main fmt_restic = {
 		cmp_exact
 	}
 };
+
+#endif /* plugin stanza */

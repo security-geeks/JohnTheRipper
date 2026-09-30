@@ -30,9 +30,7 @@
 
 /*
  * Define this for release tarballs. It affects the version reporting (will
- * be the string above and below and never a Git hash) as well as some other
- * details. Eg. it mutes output of OpenCL run-time build log unless the build
- * failed.
+ * be the string above and below and never a Git hash).
  */
 //#define JTR_RELEASE_BUILD 1
 
@@ -361,6 +359,12 @@ extern unsigned int password_hash_thresholds[PASSWORD_HASH_SIZES];
 #define LDR_HASH_COLLISIONS_MAX		1000
 
 /*
+ * Same as above but for salt-only formats, higher because they can't currently
+ * be "fixed" for the issue but still used for explaining the long load time.
+ */
+#define LDR_HASH_COLLISIONS_SALT_ONLY	10000
+
+/*
  * How many bitmap entries should the cracker prefetch at once.  Set this to 0
  * to disable prefetching.
  */
@@ -424,12 +428,6 @@ extern unsigned int password_hash_thresholds[PASSWORD_HASH_SIZES];
 #define RULE_RANGES_MAX			30
 
 /*
- * Buffer size for words while applying rules, should be at least as large
- * as PLAINTEXT_BUFFER_SIZE.
- */
-#define RULE_WORD_SIZE			0x80
-
-/*
  * By default we mute some rules logging in pipe mode, if number of rules
  * (after PP and dupe rule suppression) is larger than this threshold.
  */
@@ -438,12 +436,13 @@ extern unsigned int password_hash_thresholds[PASSWORD_HASH_SIZES];
 /*
  * Buffer size for plaintext passwords.
  */
-#define PLAINTEXT_BUFFER_SIZE		0x80
+#define PLAINTEXT_BUFFER_SIZE		320
+#define MAX_PLAINTEXT_LENGTH		(PLAINTEXT_BUFFER_SIZE - 1)
 
 /*
  * Buffer size for fgets().
  */
-#define LINE_BUFFER_SIZE		0x400
+#define LINE_BUFFER_SIZE		(0x380 + PLAINTEXT_BUFFER_SIZE)
 
 /*
  * Max. ciphertext size that's sure to fit a line when cleartext field

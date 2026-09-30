@@ -30,7 +30,7 @@ def process_file(filename):
 
     data = open(filename, "rb").read()
 
-    idx = data.find("global-salt")
+    idx = data.find(b"global-salt")
     if idx < 0:
         fail(filename)
         return
@@ -40,7 +40,7 @@ def process_file(filename):
         return
     global_salt = data[idx-20:][0:20]  # is the salt always 20 bytes?
 
-    idx = data.find("password-check")
+    idx = data.find(b"password-check")
     if idx < 0:
         fail(filename)
         return
@@ -55,7 +55,7 @@ def process_file(filename):
     version = 3  # fake (this should be improved)
     nnLen = 1  # fake
     oidLen = 11  # fake
-    oidData = "\x00" * oidLen  # fake
+    oidData = b"\x00" * oidLen  # fake
     sys.stdout.write("%s:$mozilla$*%s*%s*%s*" % (os.path.basename(filename), version, len(entry_salt), nnLen))
     sys.stdout.write(hexlify(entry_salt).decode("ascii"))
     sys.stdout.write("*%s*%s*%s*" % (oidLen, hexlify(oidData).decode("ascii"), len(verifier)))
@@ -66,7 +66,7 @@ def process_file(filename):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        sys.stdout.write("Usage: mozilla2john [key3.db file(s)]\n")
+        sys.stderr.write("Usage: mozilla2john [key3.db file(s)]\n")
         sys.exit(1)
 
     for i in range(1, len(sys.argv)):

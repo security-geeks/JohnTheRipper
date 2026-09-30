@@ -34,31 +34,18 @@ u16 fget16LE(FILE *fp);
 #define PWD_VER_LENGTH      0
 #endif
 
-#if USE_PKZIP_MAGIC
-typedef struct zip_magic_signatures_t {
-	u8 *magic_signature[8];
-	u8  magic_sig_len[8];
-	u8  magic_count;
-	u8  max_len;
-} ZIP_SIGS;
-#endif
-
 typedef struct zip_hash_type_t {
 	u8 *h;						// at getsalt time, we leave these null.  Later in setsalt, we 'fix' them
 	u8 type;					// JtR hash version. Version 2 ($pkzip2$) is now the deprecated one.
 	u16 c;
 	u16 c2;
 	u64 datlen;
-	u8 magic;					// This is used as 'magic' signature type. Also, 255 is 'generic text'
 	u8 full_zip;
 	u32 compType;				// the type of compression  0 or 8
-#if USE_PKZIP_MAGIC
-	ZIP_SIGS *pSig;
-#endif
 } ZIP_HASH;
 
 typedef struct winzip_salt_t {
-	dyna_salt dsalt;
+	dyna_salt_t dsalt;
 	uint64_t comp_len;
 	struct {
 		uint16_t type : 4;
@@ -70,7 +57,7 @@ typedef struct winzip_salt_t {
 } winzip_salt;
 
 typedef struct zip_salt_t {
-	dyna_salt dsalt;
+	dyna_salt_t dsalt;
 	char fname[1024];			// if the zip is too large, we open the file in cmp_exact read the
 								// data a small buffer at a time.  If the zip blob is small enough
 								// (under 16k), then it simply read into H[x].h at init() time.
@@ -106,6 +93,7 @@ extern int winzip_common_valid(char *ciphertext, struct fmt_main *self);
 extern char *winzip_common_split(char *ciphertext, int index, struct fmt_main *self);
 extern void *winzip_common_binary(char *ciphertext);
 extern void *winzip_common_get_salt(char *ciphertext);
+extern unsigned int winzip_common_cost_hmac_len(void *salt);
 
 extern struct fmt_tests winzip_common_tests[];
 
